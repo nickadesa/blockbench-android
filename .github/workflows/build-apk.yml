@@ -50,7 +50,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         with:
           tag_name: ${{ github.ref_name || 'v1.0.0' }}
-          name: Blockbench Mobile ${{ github.ref_name || 'v1.0.0' }}
+          name: Blockbench Mod Mobile ${{ github.ref_name || 'v1.2.0' }}
           draft: false
           prerelease: false
           files: build-output/blockbench-android.apk

@@ -1,6 +1,7 @@
 /**
- * Mobile AI Assistant Drawer UI Manager
- * Handles slide-over drawer, 5-image reference uploads, settings, chat timeline, and tool result badges
+ * Mobile AI Assistant Drawer UI Manager for Blockbench Mod Mobile
+ * Handles slide-over drawer, API key auto-detection (Gemini, Groq, Cloudflare, OpenRouter),
+ * in-chat image attachments (up to 5), connection testing, and chat timeline
  * Strictly no emojis and no third-party branding as requested.
  */
 
@@ -12,9 +13,9 @@
 	let messagesContainer = null;
 	let inputEl = null;
 	let sendBtn = null;
-	let imageStripEl = null;
 	let fileInputEl = null;
 	let settingsCardEl = null;
+	let attachedStripEl = null;
 
 	const uploadedImages = []; // Base64 data strings (max 5)
 
@@ -59,38 +60,39 @@
 			<!-- Settings Card -->
 			<div id="ai-settings-card">
 				<div class="ai-setting-field">
+					<span class="ai-setting-label">API Key (Stored locally on device):</span>
+					<input type="password" class="ai-setting-input" id="ai-apikey-input" placeholder="Paste Gemini, Groq, or Cloudflare Key">
+					<div id="ai-detected-badge" class="ai-detected-badge" style="display:none;"></div>
+				</div>
+				<div class="ai-setting-field" id="ai-cf-account-row" style="display:none;">
+					<span class="ai-setting-label">Cloudflare Account ID:</span>
+					<input type="text" class="ai-setting-input" id="ai-cf-account-input" placeholder="e.g. 1a2b3c4d5e6f...">
+				</div>
+				<div class="ai-setting-field">
 					<span class="ai-setting-label">AI Provider:</span>
 					<select class="ai-setting-select" id="ai-provider-select">
 						<option value="gemini">Google Gemini (Official REST)</option>
+						<option value="groq">Groq Cloud (Fast LPU)</option>
+						<option value="cloudflare">Cloudflare Workers AI</option>
 						<option value="freellmapi">FreeLLMAPI (Relay / Local)</option>
 						<option value="openrouter">OpenRouter</option>
-						<option value="groq">Groq Cloud</option>
 						<option value="openai">OpenAI</option>
 						<option value="custom">Custom OpenAI Endpoint</option>
 					</select>
 				</div>
 				<div class="ai-setting-field">
-					<span class="ai-setting-label">API Key (Stored locally on device):</span>
-					<input type="password" class="ai-setting-input" id="ai-apikey-input" placeholder="Enter API Key">
+					<span class="ai-setting-label">Model Selection:</span>
+					<select class="ai-setting-select" id="ai-model-select"></select>
 				</div>
 				<div class="ai-setting-field">
 					<span class="ai-setting-label">Endpoint Base URL:</span>
 					<input type="text" class="ai-setting-input" id="ai-baseurl-input" placeholder="https://...">
 				</div>
-				<div class="ai-setting-field">
-					<span class="ai-setting-label">Model Name:</span>
-					<input type="text" class="ai-setting-input" id="ai-model-input" placeholder="e.g. gemini-2.0-flash">
+				<div class="ai-settings-actions">
+					<button class="ai-test-btn" id="ai-test-connection-btn">Test Connection</button>
+					<button class="ai-save-btn" id="ai-save-settings-btn">Save Settings</button>
 				</div>
-				<div style="display:flex; justify-content:flex-end; margin-top:8px;">
-					<button id="ai-save-settings-btn" style="background:var(--ai-accent); border:none; color:#fff; border-radius:6px; padding:6px 12px; font-size:11px; cursor:pointer;">Save Settings</button>
-				</div>
-			</div>
-
-			<!-- Reference Images (Max 5) -->
-			<div class="ai-image-strip" id="ai-image-strip">
-				<button class="ai-upload-btn" id="ai-add-img-btn">+ Add Images (Max 5)</button>
-				<input type="file" id="ai-file-input" multiple accept="image/*" style="display:none;">
-				<div id="ai-thumbs-wrapper" style="display:flex; gap:6px;"></div>
+				<div id="ai-test-status" style="font-size:11px; margin-top:2px;"></div>
 			</div>
 
 			<!-- Quick Commands -->
@@ -100,33 +102,42 @@
 				<button class="ai-cmd-pill" data-cmd="/model ">/model</button>
 				<button class="ai-cmd-pill" data-cmd="/texture ">/texture</button>
 				<button class="ai-cmd-pill" data-cmd="/animate ">/animate</button>
-				<button class="ai-cmd-pill" data-cmd="/help">/help</button>
 				<button class="ai-cmd-pill" data-cmd="/clear">/clear</button>
+				<button class="ai-cmd-pill" data-cmd="/help">/help</button>
 			</div>
 
-			<!-- Messages Log -->
+			<!-- Chat Timeline -->
 			<div class="ai-chat-messages" id="ai-chat-messages">
 				<div class="ai-message assistant">
-					Welcome to Blockbench AI Assistant. Provide a description or attach up to 5 reference images, then use commands like /plan, /grillme, /model, /texture, or /animate to build your model.
+					Hello! I am your AI 3D modeling assistant. You can prompt me to build voxel models (/model), paint pixel textures (/texture), or generate animations (/animate). Attach up to 5 reference images below.
 				</div>
 			</div>
 
-			<!-- Input Footer -->
+			<!-- Input Footer & Image Attachments -->
 			<div class="ai-drawer-footer">
-				<textarea class="ai-chat-input" id="ai-chat-input" placeholder="Type prompt or /command..."></textarea>
-				<button class="ai-send-btn" id="ai-send-btn">Send</button>
+				<div class="ai-attached-images-strip" id="ai-attached-images-strip"></div>
+				<div class="ai-input-row">
+					<button class="ai-attach-btn" id="ai-add-img-btn" title="Attach Images (Max 5)">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="12" y1="5" x2="12" y2="19"></line>
+							<line x1="5" y1="12" x2="19" y2="12"></line>
+						</svg>
+					</button>
+					<input type="file" id="ai-file-input" multiple accept="image/*" style="display:none;">
+					<input type="text" class="ai-chat-input" id="ai-chat-input" placeholder="Type prompt or command...">
+					<button class="ai-send-btn" id="ai-send-btn">Send</button>
+				</div>
 			</div>
 		`;
 
 		document.body.appendChild(drawerEl);
 
-		// Cache DOM elements
 		messagesContainer = document.getElementById('ai-chat-messages');
 		inputEl = document.getElementById('ai-chat-input');
 		sendBtn = document.getElementById('ai-send-btn');
-		imageStripEl = document.getElementById('ai-image-strip');
 		fileInputEl = document.getElementById('ai-file-input');
 		settingsCardEl = document.getElementById('ai-settings-card');
+		attachedStripEl = document.getElementById('ai-attached-images-strip');
 
 		// Bind events
 		document.getElementById('ai-close-drawer').addEventListener('click', closeDrawer);
@@ -151,24 +162,119 @@
 			});
 		});
 
-		// Provider Settings inputs
+		// Settings controls
+		setupSettingsCard();
+
+		// Header trigger button
+		const headerBtn = document.getElementById('btn_native_ai_assistant');
+		if (headerBtn) {
+			headerBtn.addEventListener('click', toggleDrawer);
+		}
+	}
+
+	function setupSettingsCard() {
 		const providerSelect = document.getElementById('ai-provider-select');
 		const apiKeyInput = document.getElementById('ai-apikey-input');
 		const baseUrlInput = document.getElementById('ai-baseurl-input');
-		const modelInput = document.getElementById('ai-model-input');
+		const modelSelect = document.getElementById('ai-model-select');
+		const detectedBadge = document.getElementById('ai-detected-badge');
+		const cfAccountRow = document.getElementById('ai-cf-account-row');
+		const cfAccountInput = document.getElementById('ai-cf-account-input');
+		const testBtn = document.getElementById('ai-test-connection-btn');
+		const testStatus = document.getElementById('ai-test-status');
+
+		function populateModelSelect(providerKey, selectedModel) {
+			modelSelect.innerHTML = '';
+			const provider = window.DEFAULT_PROVIDERS ? window.DEFAULT_PROVIDERS[providerKey] : null;
+			const models = (provider && provider.models) ? provider.models : [selectedModel || 'default'];
+
+			models.forEach((m) => {
+				const opt = document.createElement('option');
+				opt.value = m;
+				opt.textContent = m;
+				if (m === selectedModel) opt.selected = true;
+				modelSelect.appendChild(opt);
+			});
+
+			if (!models.includes(selectedModel) && selectedModel) {
+				const customOpt = document.createElement('option');
+				customOpt.value = selectedModel;
+				customOpt.textContent = selectedModel;
+				customOpt.selected = true;
+				modelSelect.appendChild(customOpt);
+			}
+		}
+
+		function applyAutoDetection(key) {
+			if (!window.detectProviderFromKey) return;
+			const detected = window.detectProviderFromKey(key);
+			if (detected && window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[detected]) {
+				const pInfo = window.DEFAULT_PROVIDERS[detected];
+				detectedBadge.style.display = 'inline-block';
+				detectedBadge.textContent = `Auto-Detected: ${pInfo.name}`;
+				providerSelect.value = detected;
+				baseUrlInput.value = pInfo.defaultBaseUrl;
+				populateModelSelect(detected, pInfo.defaultModel);
+
+				if (detected === 'cloudflare') {
+					cfAccountRow.style.display = 'flex';
+					if (key.includes(':')) {
+						const parts = key.split(':');
+						cfAccountInput.value = parts[0].trim();
+					}
+				} else {
+					cfAccountRow.style.display = 'none';
+				}
+			} else {
+				detectedBadge.style.display = 'none';
+			}
+		}
 
 		if (window.AIProvider) {
-			providerSelect.value = window.AIProvider.config.activeProvider;
+			providerSelect.value = window.AIProvider.config.activeProvider || 'gemini';
 			apiKeyInput.value = window.AIProvider.config.apiKey || '';
 			baseUrlInput.value = window.AIProvider.config.baseUrl || '';
-			modelInput.value = window.AIProvider.config.model || '';
+			cfAccountInput.value = window.AIProvider.config.cloudflareAccountId || '';
+			populateModelSelect(providerSelect.value, window.AIProvider.config.model);
+
+			if (providerSelect.value === 'cloudflare') {
+				cfAccountRow.style.display = 'flex';
+			}
+			if (apiKeyInput.value) {
+				applyAutoDetection(apiKeyInput.value);
+			}
 		}
+
+		apiKeyInput.addEventListener('input', (e) => {
+			applyAutoDetection(e.target.value);
+		});
 
 		providerSelect.addEventListener('change', (e) => {
 			const prov = e.target.value;
 			if (window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[prov]) {
 				baseUrlInput.value = window.DEFAULT_PROVIDERS[prov].defaultBaseUrl;
-				modelInput.value = window.DEFAULT_PROVIDERS[prov].defaultModel;
+				populateModelSelect(prov, window.DEFAULT_PROVIDERS[prov].defaultModel);
+			}
+			cfAccountRow.style.display = prov === 'cloudflare' ? 'flex' : 'none';
+		});
+
+		testBtn.addEventListener('click', async () => {
+			testStatus.textContent = 'Testing connection...';
+			testStatus.style.color = '#3e90ff';
+			try {
+				if (window.AIProvider) {
+					window.AIProvider.config.activeProvider = providerSelect.value;
+					window.AIProvider.config.apiKey = apiKeyInput.value.trim();
+					window.AIProvider.config.baseUrl = baseUrlInput.value.trim();
+					window.AIProvider.config.model = modelSelect.value.trim();
+					window.AIProvider.config.cloudflareAccountId = cfAccountInput.value.trim();
+				}
+				await window.AIProvider.testConnection();
+				testStatus.textContent = 'Success: Connected to AI Provider!';
+				testStatus.style.color = '#2ecc71';
+			} catch (err) {
+				testStatus.textContent = `Failed: ${err.message || String(err)}`;
+				testStatus.style.color = '#e74c3c';
 			}
 		});
 
@@ -177,18 +283,12 @@
 				window.AIProvider.config.activeProvider = providerSelect.value;
 				window.AIProvider.config.apiKey = apiKeyInput.value.trim();
 				window.AIProvider.config.baseUrl = baseUrlInput.value.trim();
-				window.AIProvider.config.model = modelInput.value.trim();
+				window.AIProvider.config.model = modelSelect.value.trim();
+				window.AIProvider.config.cloudflareAccountId = cfAccountInput.value.trim();
 				window.AIProvider.saveConfig();
-				appendStatusMessage('Settings saved successfully.');
-				toggleSettings();
 			}
+			toggleSettings();
 		});
-
-		// Header trigger button
-		const headerBtn = document.getElementById('btn_native_ai_assistant');
-		if (headerBtn) {
-			headerBtn.addEventListener('click', toggleDrawer);
-		}
 	}
 
 	function toggleDrawer() {
@@ -220,18 +320,25 @@
 	}
 
 	function handleFileSelection(e) {
-		const files = Array.from(e.target.files);
-		if (!files || files.length === 0) return;
+		const files = Array.from(e.target.files || []);
+		if (!files.length) return;
 
-		files.forEach((file) => {
-			if (uploadedImages.length >= 5) return;
+		const remainingSlots = 5 - uploadedImages.length;
+		if (remainingSlots <= 0) {
+			alert('Maximum 5 reference images allowed');
+			return;
+		}
+
+		const filesToProcess = files.slice(0, remainingSlots);
+
+		filesToProcess.forEach((file) => {
 			const reader = new FileReader();
 			reader.onload = function (evt) {
-				const rawDataUrl = evt.target.result;
-				compressImage(rawDataUrl, 1024, 1024, (compressedDataUrl) => {
+				const dataUrl = evt.target.result;
+				compressImage(dataUrl, 1024, 1024, (compressedDataUrl) => {
 					if (uploadedImages.length < 5) {
 						uploadedImages.push(compressedDataUrl);
-						renderImageThumbnails();
+						renderAttachedThumbnails();
 					}
 				});
 			};
@@ -265,10 +372,9 @@
 		img.src = dataUrl;
 	}
 
-	function renderImageThumbnails() {
-		const wrapper = document.getElementById('ai-thumbs-wrapper');
-		if (!wrapper) return;
-		wrapper.innerHTML = '';
+	function renderAttachedThumbnails() {
+		if (!attachedStripEl) return;
+		attachedStripEl.innerHTML = '';
 
 		uploadedImages.forEach((imgSrc, idx) => {
 			const container = document.createElement('div');
@@ -284,25 +390,39 @@
 			`;
 			container.querySelector('button').addEventListener('click', () => {
 				uploadedImages.splice(idx, 1);
-				renderImageThumbnails();
+				renderAttachedThumbnails();
 			});
-			wrapper.appendChild(container);
+			attachedStripEl.appendChild(container);
 		});
 	}
 
-	function appendMessage(role, text, toolResults = []) {
+	function appendMessage(role, text, toolResults = [], images = []) {
 		if (!messagesContainer) return;
 		const msgEl = document.createElement('div');
 		msgEl.className = `ai-message ${role}`;
 
-		// Simple markdown code formatting
-		let formattedText = (text || '')
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/\n/g, '<br>');
+		// If user message contains attached images, render thumbnails inside chat bubble
+		if (Array.isArray(images) && images.length > 0) {
+			const imgRow = document.createElement('div');
+			imgRow.className = 'ai-msg-images';
+			images.forEach((imgSrc) => {
+				const img = document.createElement('img');
+				img.className = 'ai-msg-thumb';
+				img.src = imgSrc;
+				imgRow.appendChild(img);
+			});
+			msgEl.appendChild(imgRow);
+		}
 
-		msgEl.innerHTML = formattedText;
+		if (text) {
+			const textNode = document.createElement('div');
+			textNode.innerHTML = (text || '')
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/\n/g, '<br>');
+			msgEl.appendChild(textNode);
+		}
 
 		// Append tool results badges if present
 		if (Array.isArray(toolResults) && toolResults.length > 0) {
@@ -333,19 +453,23 @@
 		const rawText = inputEl.value.trim();
 		if (!rawText && uploadedImages.length === 0) return;
 
+		const currentImages = [...uploadedImages];
 		inputEl.value = '';
+		uploadedImages.length = 0; // Clear attachment tray
+		renderAttachedThumbnails();
+
 		sendBtn.disabled = true;
 		inputEl.disabled = true;
 
-		// Display user message in chat
-		appendMessage('user', rawText);
+		// Display user message in chat along with thumbnail images
+		appendMessage('user', rawText, null, currentImages);
 
 		const statusMsg = appendStatusMessage('Thinking...');
 
 		try {
 			const result = await window.AICommands.executePrompt({
 				rawInput: rawText,
-				images: [...uploadedImages],
+				images: currentImages,
 				onStatusUpdate: (status) => {
 					if (statusMsg) statusMsg.textContent = status;
 				}

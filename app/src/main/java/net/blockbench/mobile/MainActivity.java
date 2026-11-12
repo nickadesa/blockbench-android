@@ -36,9 +36,17 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -83,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setUseWideViewPort(true);
         settings.setSupportZoom(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         // Enable hardware acceleration
         mWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -163,6 +172,12 @@ public class MainActivity extends AppCompatActivity {
         mWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        setDisplayRefreshRate(120.0f);
+    }
+
     public void setDisplayRefreshRate(float targetFps) {
         runOnUiThread(() -> {
             try {
@@ -175,14 +190,18 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (display == null) return;
 
+                    Display.Mode currentMode = display.getMode();
+                    int curW = currentMode.getPhysicalWidth();
+                    int curH = currentMode.getPhysicalHeight();
+
                     Display.Mode[] modes = display.getSupportedModes();
                     Display.Mode bestMode = null;
-                    float highestRate = 60.0f;
+                    float highestRate = currentMode.getRefreshRate();
 
                     for (Display.Mode mode : modes) {
-                        float rate = mode.getRefreshRate();
-                        if (rate > highestRate) {
-                            if (targetFps >= 120.0f || rate <= targetFps + 2.0f) {
+                        if (mode.getPhysicalWidth() == curW && mode.getPhysicalHeight() == curH) {
+                            float rate = mode.getRefreshRate();
+                            if (rate > highestRate && (targetFps >= 118.0f || rate <= targetFps + 2.0f)) {
                                 highestRate = rate;
                                 bestMode = mode;
                             }
@@ -190,17 +209,18 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     WindowManager.LayoutParams params = getWindow().getAttributes();
-                    if (targetFps > 60.0f && bestMode != null) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            params.preferredDisplayModeId = bestMode.getModeId();
-                        }
+                    if (bestMode != null) {
+                        params.preferredDisplayModeId = bestMode.getModeId();
                         params.preferredRefreshRate = highestRate;
                     } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            params.preferredDisplayModeId = 0;
-                        }
                         params.preferredRefreshRate = targetFps;
                     }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        params.preferredMinDisplayRefreshRate = targetFps;
+                        params.preferredMaxDisplayRefreshRate = targetFps;
+                    }
+
                     getWindow().setAttributes(params);
                 }
             } catch (Exception ignored) {}
@@ -335,6 +355,62 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public boolean isAndroidApp() {
             return true;
+        }
+
+        @JavascriptInterface
+        public String executeHttpRequest(String targetUrl, String method, String headersJson, String bodyData) {
+            try {
+                URL url = new URL(targetUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod(method.toUpperCase());
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(60000);
+                conn.setDoInput(true);
+
+                if (headersJson != null && !headersJson.trim().isEmpty()) {
+                    JSONObject headers = new JSONObject(headersJson);
+                    Iterator<String> keys = headers.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        conn.setRequestProperty(key, headers.getString(key));
+                    }
+                }
+
+                if (bodyData != null && !bodyData.isEmpty() && ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method))) {
+                    conn.setDoOutput(true);
+                    try (OutputStream os = conn.getOutputStream()) {
+                        byte[] input = bodyData.getBytes(StandardCharsets.UTF_8);
+                        os.write(input, 0, input.length);
+                        os.flush();
+                    }
+                }
+
+                int statusCode = conn.getResponseCode();
+                InputStream is = (statusCode >= 200 && statusCode < 400) ? conn.getInputStream() : conn.getErrorStream();
+                StringBuilder responseBuilder = new StringBuilder();
+                if (is != null) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            responseBuilder.append(line).append("\n");
+                        }
+                    }
+                }
+
+                JSONObject result = new JSONObject();
+                result.put("status", statusCode);
+                result.put("body", responseBuilder.toString());
+                return result.toString();
+            } catch (Exception e) {
+                try {
+                    JSONObject err = new JSONObject();
+                    err.put("status", 0);
+                    err.put("error", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
+                    return err.toString();
+                } catch (Exception ignored) {
+                    return "{\"status\":0,\"error\":\"Network error\"}";
+                }
+            }
         }
     }
 }
