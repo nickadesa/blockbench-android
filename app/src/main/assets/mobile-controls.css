@@ -1,0 +1,324 @@
+/* Mobile Controls & Performance Styling for Blockbench */
+
+:root {
+	--mb-bg: rgba(28, 32, 38, 0.92);
+	--mb-border: rgba(255, 255, 255, 0.15);
+	--mb-accent: #3e90ff;
+	--mb-accent-hover: #5aa1ff;
+	--mb-active: #2ecc71;
+	--mb-text: #f0f3f6;
+	--mb-text-dim: #9aa5b1;
+}
+
+/* Top-Right Fullscreen Toggle Square Button */
+#fullscreen-toggle-btn {
+	position: fixed;
+	top: 10px;
+	right: 12px;
+	width: 36px;
+	height: 36px;
+	background: var(--mb-bg);
+	border: 1px solid var(--mb-border);
+	border-radius: 6px;
+	color: var(--mb-text);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16px;
+	font-weight: bold;
+	cursor: pointer;
+	z-index: 999999;
+	user-select: none;
+	backdrop-filter: blur(8px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+	transition: background 0.2s, transform 0.1s;
+}
+
+#fullscreen-toggle-btn:active {
+	transform: scale(0.92);
+	background: var(--mb-accent);
+}
+
+/* Realtime FPS Counter */
+#mb-fps-counter {
+	position: fixed;
+	top: 10px;
+	left: 12px;
+	padding: 4px 8px;
+	background: rgba(0, 0, 0, 0.65);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 4px;
+	color: #2ecc71;
+	font-family: monospace;
+	font-size: 12px;
+	font-weight: bold;
+	z-index: 999998;
+	pointer-events: none;
+	display: none;
+	user-select: none;
+}
+
+/* Camera Snap Widget */
+#mb-camera-snap {
+	position: fixed;
+	top: 52px;
+	right: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	z-index: 999997;
+}
+
+.mb-cam-btn {
+	width: 36px;
+	height: 28px;
+	background: var(--mb-bg);
+	border: 1px solid var(--mb-border);
+	border-radius: 4px;
+	color: var(--mb-text-dim);
+	font-size: 10px;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	user-select: none;
+	backdrop-filter: blur(6px);
+}
+
+.mb-cam-btn:active {
+	background: var(--mb-accent);
+	color: #ffffff;
+}
+
+/* Floating Toolbar */
+#mb-floating-bar {
+	position: fixed;
+	bottom: 24px;
+	left: 16px;
+	background: var(--mb-bg);
+	border: 1px solid var(--mb-border);
+	border-radius: 10px;
+	padding: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	z-index: 999995;
+	backdrop-filter: blur(10px);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	touch-action: none;
+	user-select: none;
+}
+
+#mb-drag-handle {
+	height: 12px;
+	background: rgba(255, 255, 255, 0.15);
+	border-radius: 6px;
+	cursor: grab;
+	margin-bottom: 2px;
+}
+
+.mb-bar-row {
+	display: flex;
+	gap: 5px;
+	align-items: center;
+}
+
+.mb-btn {
+	min-width: 42px;
+	height: 38px;
+	padding: 0 8px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	color: var(--mb-text);
+	font-size: 11px;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s, border-color 0.15s;
+}
+
+.mb-btn:active {
+	background: rgba(255, 255, 255, 0.25);
+}
+
+.mb-btn.active {
+	background: var(--mb-accent);
+	border-color: #6bb0ff;
+	color: #ffffff;
+	box-shadow: 0 0 8px rgba(62, 144, 255, 0.5);
+}
+
+/* Zoom Scroll Strip */
+#mb-scroll-strip {
+	width: 42px;
+	height: 60px;
+	background: rgba(0, 0, 0, 0.4);
+	border: 1px dashed rgba(255, 255, 255, 0.2);
+	border-radius: 6px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 0;
+	color: var(--mb-text-dim);
+	font-size: 9px;
+	touch-action: none;
+}
+
+/* Precision D-Pad */
+#mb-dpad-container {
+	display: none;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 8px;
+	padding: 4px;
+	grid-template-columns: repeat(3, 34px);
+	grid-template-rows: repeat(3, 34px);
+	gap: 3px;
+	justify-content: center;
+	margin-top: 4px;
+}
+
+.mb-dpad-btn {
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 4px;
+	color: var(--mb-text);
+	font-size: 13px;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.mb-dpad-btn:active {
+	background: var(--mb-accent);
+}
+
+/* Collapsed Mini Bubble */
+#mb-mini-bubble {
+	display: none;
+	width: 44px;
+	height: 44px;
+	background: var(--mb-bg);
+	border: 1px solid var(--mb-accent);
+	border-radius: 50%;
+	position: fixed;
+	bottom: 24px;
+	left: 16px;
+	z-index: 999996;
+	align-items: center;
+	justify-content: center;
+	color: var(--mb-accent);
+	font-size: 12px;
+	font-weight: bold;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+	cursor: pointer;
+	touch-action: none;
+}
+
+/* Virtual Cursor */
+#mb-virtual-cursor {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 24px;
+	height: 24px;
+	pointer-events: none;
+	z-index: 9999999;
+	display: none;
+	transform: translate(0, 0);
+	transition: none;
+}
+
+/* Virtual Touchpad Overlay */
+#mb-touchpad-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	z-index: 999990;
+	display: none;
+	touch-action: none;
+}
+
+/* Quick Settings Modal */
+#mb-settings-modal {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 90%;
+	max-width: 420px;
+	max-height: 85vh;
+	overflow-y: auto;
+	background: #1e2228;
+	border: 1px solid var(--mb-border);
+	border-radius: 12px;
+	padding: 16px;
+	z-index: 99999999;
+	color: var(--mb-text);
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+	display: none;
+}
+
+.mb-modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	padding-bottom: 8px;
+	margin-bottom: 12px;
+	font-size: 15px;
+	font-weight: bold;
+}
+
+.mb-modal-close {
+	background: none;
+	border: none;
+	color: var(--mb-text-dim);
+	font-size: 16px;
+	font-weight: bold;
+	cursor: pointer;
+}
+
+.mb-setting-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+	font-size: 13px;
+}
+
+.mb-setting-label {
+	color: var(--mb-text);
+	font-weight: 500;
+}
+
+.mb-setting-row select,
+.mb-setting-row input[type="text"],
+.mb-setting-row input[type="color"] {
+	background: #14171a;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 6px;
+	color: #ffffff;
+	padding: 5px 8px;
+	font-size: 12px;
+}
+
+.mb-setting-row input[type="checkbox"] {
+	width: 18px;
+	height: 18px;
+	accent-color: var(--mb-accent);
+}
+
+.mb-setting-row input[type="range"] {
+	width: 140px;
+	accent-color: var(--mb-accent);
+}

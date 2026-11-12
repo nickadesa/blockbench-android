@@ -1,0 +1,90 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradlew Executable
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare APK Deliverable
+        run: |
+          mkdir -p build-output
+          cp app/build/outputs/apk/release/app-release.apk build-output/blockbench-android.apk
+          ls -la build-output/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blockbench-android-apk
+          path: build-output/blockbench-android.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || 'v1.0.0' }}
+          name: Blockbench Mobile ${{ github.ref_name || 'v1.0.0' }}
+          draft: false
+          prerelease: false
+          files: build-output/blockbench-android.apk
+          body: |
+            Blockbench Android Edition (v1.0.0)
+
+            Key Features and Enhancements:
+            1. Full Offline Bundle: Standalone application with all 3D engine and web assets packaged directly in the APK. No internet connection required.
+            2. Top-Right Fullscreen Toggle: Dedicated square button [ Fullscreen ] for immersive full-screen modeling without Android navigation or status bars.
+            3. Performance Tuning:
+               - Target FPS Limiter: 30, 60, 90, 120 FPS, and Uncapped.
+               - Resolution Scaling: 50% (Battery Saver), 75% (Balanced), 100% (High Quality).
+               - Anti-Aliasing (MSAA) Toggle.
+               - Real-time On-Screen FPS Counter overlay.
+            4. Virtual Mouse and Keyboard Controller:
+               - Draggable and collapsible floating toolbar with LMB, RMB, and MMB (Pan).
+               - Vertical Zoom Scroll Strip for smooth 3D zooming.
+               - Sticky Modifiers: CTRL, ALT, SHIFT, and SPACE with toggle lock.
+               - Precision D-Pad stepper for fine coordinate adjustments.
+               - Touchpad Mode with customizable virtual cursor.
+            5. Five Cursor Templates:
+               - Classic White: Standard high-contrast pointer with dark border.
+               - Modern Black: Dark pointer with light border.
+               - macOS Black: Sleek curved pointer with subtle shadow.
+               - Customizable Color: Dynamic cursor with custom color picker.
+               - Custom URL: Load custom .cur or .png cursor from URL.
+            6. Mobile UX Gestures:
+               - Two-finger tap: Undo.
+               - Three-finger tap: Redo.
+               - Dynamic UI Scaling (75% to 125%).
+               - Camera Snap Widget (Top, Front, Right, Isometric).
+               - Toggleable Haptic Feedback on button clicks and grid snaps.
+               - Aggressive Local Auto-Save every 2 minutes.
+            7. Custom App Icon: Features the Blockbench chair graphic branded with small black DAVINICK text.
