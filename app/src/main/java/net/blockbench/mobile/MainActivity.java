@@ -1,14 +1,20 @@
 package net.blockbench.mobile;
 
 import android.annotation.SuppressLint;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.MediaStore;
+import android.util.Base64;
+import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -30,6 +36,10 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+
 public class MainActivity extends AppCompatActivity {
 
     private WebView mWebView;
@@ -45,6 +55,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Keep screen on while modeling
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // Request highest display refresh rate (e.g. 120Hz)
+        setDisplayRefreshRate(120.0f);
 
         mWebView = new WebView(this);
         setContentView(mWebView);
@@ -105,9 +118,15 @@ public class MainActivity extends AppCompatActivity {
                 }
                 mFilePathCallback = filePathCallback;
 
-                Intent intent = fileChooserParams.createIntent();
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                if (fileChooserParams != null && fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                }
+
                 try {
-                    startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
+                    startActivityForResult(Intent.createChooser(intent, "Select File"), FILE_CHOOSER_REQUEST_CODE);
                 } catch (Exception e) {
                     mFilePathCallback = null;
                     Toast.makeText(MainActivity.this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
@@ -142,6 +161,100 @@ public class MainActivity extends AppCompatActivity {
 
         // Load local asset URL
         mWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+    }
+
+    public void setDisplayRefreshRate(float targetFps) {
+        runOnUiThread(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Display display;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        display = getDisplay();
+                    } else {
+                        display = getWindowManager().getDefaultDisplay();
+                    }
+                    if (display == null) return;
+
+                    Display.Mode[] modes = display.getSupportedModes();
+                    Display.Mode bestMode = null;
+                    float highestRate = 60.0f;
+
+                    for (Display.Mode mode : modes) {
+                        float rate = mode.getRefreshRate();
+                        if (rate > highestRate) {
+                            if (targetFps >= 120.0f || rate <= targetFps + 2.0f) {
+                                highestRate = rate;
+                                bestMode = mode;
+                            }
+                        }
+                    }
+
+                    WindowManager.LayoutParams params = getWindow().getAttributes();
+                    if (targetFps > 60.0f && bestMode != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            params.preferredDisplayModeId = bestMode.getModeId();
+                        }
+                        params.preferredRefreshRate = highestRate;
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            params.preferredDisplayModeId = 0;
+                        }
+                        params.preferredRefreshRate = targetFps;
+                    }
+                    getWindow().setAttributes(params);
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    public boolean saveFileToDownloads(String filename, String base64Data, String mimeType) {
+        try {
+            byte[] fileBytes = Base64.decode(base64Data, Base64.DEFAULT);
+            if (mimeType == null || mimeType.isEmpty()) {
+                mimeType = "application/octet-stream";
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Downloads.DISPLAY_NAME, filename);
+                values.put(MediaStore.Downloads.MIME_TYPE, mimeType);
+                values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+                Uri collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                Uri fileUri = getContentResolver().insert(collection, values);
+
+                if (fileUri != null) {
+                    try (OutputStream out = getContentResolver().openOutputStream(fileUri)) {
+                        if (out != null) {
+                            out.write(fileBytes);
+                            out.flush();
+                        }
+                    }
+                    values.clear();
+                    values.put(MediaStore.Downloads.IS_PENDING, 0);
+                    getContentResolver().update(fileUri, values, null, null);
+
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Saved: " + filename, Toast.LENGTH_SHORT).show());
+                    return true;
+                }
+            } else {
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                File destFile = new File(downloadsDir, filename);
+                try (FileOutputStream fos = new FileOutputStream(destFile)) {
+                    fos.write(fileBytes);
+                    fos.flush();
+                }
+                MediaScannerConnection.scanFile(MainActivity.this, new String[]{destFile.getAbsolutePath()}, null, null);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Saved: " + filename, Toast.LENGTH_SHORT).show());
+                return true;
+            }
+        } catch (Exception e) {
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Failed to save file: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+        }
+        return false;
     }
 
     public void toggleFullscreen() {
@@ -188,6 +301,16 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public boolean isFullscreen() {
             return isImmersiveFullscreen;
+        }
+
+        @JavascriptInterface
+        public void setRefreshRate(float fps) {
+            MainActivity.this.setDisplayRefreshRate(fps);
+        }
+
+        @JavascriptInterface
+        public boolean saveBase64File(String filename, String base64Data, String mimeType) {
+            return MainActivity.this.saveFileToDownloads(filename, base64Data, mimeType);
         }
 
         @JavascriptInterface

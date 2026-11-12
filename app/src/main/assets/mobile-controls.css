@@ -19,23 +19,30 @@
 	color: #ffffff;
 }
 
+#btn_native_toggle_fps.active {
+	color: #2ecc71;
+	background: rgba(46, 204, 113, 0.2);
+}
+
 /* Realtime FPS Counter (Top Left) */
 #mb-fps-counter {
 	position: fixed;
 	top: 38px;
 	left: 8px;
-	padding: 3px 6px;
-	background: rgba(0, 0, 0, 0.65);
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	padding: 4px 8px;
+	background: rgba(0, 0, 0, 0.72);
+	border: 1px solid rgba(46, 204, 113, 0.4);
 	border-radius: 4px;
 	color: #2ecc71;
 	font-family: monospace;
 	font-size: 11px;
 	font-weight: bold;
 	z-index: 999998;
-	pointer-events: none;
+	pointer-events: auto;
+	cursor: pointer;
 	display: none;
 	user-select: none;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* Virtual Cursor (DOM-rendered SVG container) */

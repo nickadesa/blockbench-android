@@ -11,7 +11,7 @@
 
 	// Default Configuration
 	const config = {
-		fpsLimit: 60,
+		fpsLimit: 120, // Default to 120 FPS
 		resolutionScale: 1.0,
 		antiAliasing: true,
 		showFps: true,
@@ -54,8 +54,17 @@
 		} catch (e) {}
 	}
 
+	function syncRefreshRateWithNative() {
+		try {
+			if (window.AndroidBridge && window.AndroidBridge.setRefreshRate) {
+				const target = config.fpsLimit === 'uncapped' ? 120 : Number(config.fpsLimit);
+				window.AndroidBridge.setRefreshRate(target);
+			}
+		} catch (e) {}
+	}
+
 	// -------------------------------------------------------------
-	// 1. Performance Engine (FPS Throttler & Resolution Scale)
+	// 1. Performance Engine (High Refresh Rate & Resolution Scale)
 	// -------------------------------------------------------------
 	let realFps = 60;
 	let frameCount = 0;
@@ -64,7 +73,7 @@
 	const originalRAF = window.requestAnimationFrame.bind(window);
 
 	window.requestAnimationFrame = function (callback) {
-		if (config.fpsLimit === 'uncapped' || !config.fpsLimit) {
+		if (config.fpsLimit === 'uncapped' || Number(config.fpsLimit) >= 120 || !config.fpsLimit) {
 			return originalRAF((timestamp) => {
 				updateFpsMetrics(timestamp);
 				callback(timestamp);
@@ -94,6 +103,29 @@
 			if (fpsEl && config.showFps) {
 				fpsEl.textContent = `FPS: ${realFps} / ${config.fpsLimit}`;
 			}
+		}
+	}
+
+	function toggleFpsDisplay(forceState) {
+		if (typeof forceState === 'boolean') {
+			config.showFps = forceState;
+		} else {
+			config.showFps = !config.showFps;
+		}
+		saveConfig();
+		triggerHaptic(14);
+
+		const fpsEl = document.getElementById('mb-fps-counter');
+		if (fpsEl) {
+			fpsEl.style.display = config.showFps ? 'block' : 'none';
+		}
+		const fpsCb = document.getElementById('mb-set-showfps');
+		if (fpsCb) {
+			fpsCb.checked = config.showFps;
+		}
+		const headerFpsBtn = document.getElementById('btn_native_toggle_fps');
+		if (headerFpsBtn) {
+			headerFpsBtn.classList.toggle('active', config.showFps);
 		}
 	}
 
@@ -158,9 +190,20 @@
 		}
 	}
 
+	let isLmbHeld = false;
+	let isRmbHeld = false;
+
 	function dispatchMouseEvent(type, button = 0) {
-		triggerHaptic(18);
+		triggerHaptic(16);
 		const target = document.elementFromPoint(cursorX, cursorY) || document.body;
+		let buttons = 0;
+		if (type !== 'mouseup') {
+			if (isLmbHeld && isRmbHeld) buttons = 3;
+			else if (isLmbHeld) buttons = 1;
+			else if (isRmbHeld) buttons = 2;
+			else buttons = button === 2 ? 2 : 1;
+		}
+
 		const event = new MouseEvent(type, {
 			view: window,
 			bubbles: true,
@@ -168,9 +211,32 @@
 			clientX: cursorX,
 			clientY: cursorY,
 			button: button,
-			buttons: type === 'mouseup' ? 0 : button === 0 ? 1 : button === 2 ? 2 : 4
+			buttons: buttons
 		});
 		target.dispatchEvent(event);
+		if (type === 'mouseup' || type === 'mousedown') {
+			document.dispatchEvent(event);
+		}
+	}
+
+	function dispatchMouseMove() {
+		const target = document.elementFromPoint(cursorX, cursorY) || document.body;
+		let buttons = 0;
+		if (isLmbHeld && isRmbHeld) buttons = 3;
+		else if (isLmbHeld) buttons = 1;
+		else if (isRmbHeld) buttons = 2;
+
+		const event = new MouseEvent('mousemove', {
+			view: window,
+			bubbles: true,
+			cancelable: true,
+			clientX: cursorX,
+			clientY: cursorY,
+			button: isRmbHeld ? 2 : 0,
+			buttons: buttons
+		});
+		target.dispatchEvent(event);
+		document.dispatchEvent(event);
 	}
 
 	// -------------------------------------------------------------
@@ -203,14 +269,156 @@
 	}, { passive: true });
 
 	// -------------------------------------------------------------
-	// 4. UI Construction & Event Handlers
+	// 4. File Export & Download Interceptor
+	// -------------------------------------------------------------
+	function saveBase64ToDevice(filename, base64Data, mimeType) {
+		try {
+			if (window.AndroidBridge && window.AndroidBridge.saveBase64File) {
+				window.AndroidBridge.saveBase64File(filename, base64Data, mimeType);
+				return;
+			}
+		} catch (e) {
+			console.warn('AndroidBridge saveBase64File failed', e);
+		}
+
+		// Fallback for browser preview
+		try {
+			const byteCharacters = atob(base64Data);
+			const byteNumbers = new Array(byteCharacters.length);
+			for (let i = 0; i < byteCharacters.length; i++) {
+				byteNumbers[i] = byteCharacters.charCodeAt(i);
+			}
+			const byteArray = new Uint8Array(byteNumbers);
+			const blob = new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			setTimeout(() => {
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			}, 1000);
+		} catch (e) {
+			console.error('Fallback save failed', e);
+		}
+	}
+
+	function handleExportFile(filename, content, mimeType, callback) {
+		triggerHaptic(18);
+		if (content instanceof Blob) {
+			const reader = new FileReader();
+			reader.onloadend = function () {
+				const dataUrl = reader.result;
+				if (typeof dataUrl === 'string') {
+					const commaIdx = dataUrl.indexOf(',');
+					const base64 = dataUrl.substring(commaIdx + 1);
+					const detectedMime = dataUrl.substring(5, commaIdx).split(';')[0] || mimeType;
+					saveBase64ToDevice(filename, base64, detectedMime);
+					if (typeof callback === 'function') callback(filename);
+				}
+			};
+			reader.readAsDataURL(content);
+		} else if (typeof content === 'string') {
+			if (content.startsWith('data:')) {
+				const commaIdx = content.indexOf(',');
+				const base64 = content.substring(commaIdx + 1);
+				const detectedMime = content.substring(5, commaIdx).split(';')[0] || mimeType;
+				saveBase64ToDevice(filename, base64, detectedMime);
+			} else {
+				try {
+					const base64 = btoa(unescape(encodeURIComponent(content)));
+					saveBase64ToDevice(filename, base64, mimeType || 'text/plain;charset=utf-8');
+				} catch (e) {
+					console.error('Failed to encode string content', e);
+				}
+			}
+			if (typeof callback === 'function') callback(filename);
+		} else if (content instanceof ArrayBuffer || ArrayBuffer.isView(content)) {
+			const bytes = new Uint8Array(content.buffer || content);
+			let binary = '';
+			const len = bytes.byteLength;
+			for (let i = 0; i < len; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			const base64 = btoa(binary);
+			saveBase64ToDevice(filename, base64, mimeType || 'application/octet-stream');
+			if (typeof callback === 'function') callback(filename);
+		}
+	}
+
+	function setupExportHooks() {
+		// Hook window.saveAs
+		window.saveAs = function (content, filename) {
+			handleExportFile(filename || 'download', content, 'application/octet-stream');
+		};
+
+		// Intercept <a> download click
+		const originalAnchorClick = HTMLAnchorElement.prototype.click;
+		HTMLAnchorElement.prototype.click = function () {
+			if (this.hasAttribute('download')) {
+				const filename = this.getAttribute('download') || 'download';
+				const href = this.getAttribute('href') || this.href;
+				if (href && (href.startsWith('blob:') || href.startsWith('data:'))) {
+					fetch(href)
+						.then((r) => r.blob())
+						.then((blob) => {
+							handleExportFile(filename, blob, blob.type);
+						})
+						.catch(() => {
+							originalAnchorClick.apply(this, arguments);
+						});
+					return;
+				}
+			}
+			return originalAnchorClick.apply(this, arguments);
+		};
+
+		// Hook Blockbench.exportFile
+		function hookBlockbenchExport() {
+			if (window.Blockbench && window.Blockbench.exportFile) {
+				const origExport = window.Blockbench.exportFile;
+				window.Blockbench.exportFile = function (options, callback) {
+					if (!options) return origExport.apply(this, arguments);
+					let filename = options.name || 'model';
+					if (options.extensions && options.extensions[0]) {
+						const ext = options.extensions[0];
+						if (!filename.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+							filename += '.' + ext;
+						}
+					}
+					if (options.content !== undefined && options.content !== null) {
+						handleExportFile(filename, options.content, options.type, callback);
+						return;
+					}
+					return origExport.apply(this, arguments);
+				};
+				window.Blockbench.export = window.Blockbench.exportFile;
+				return true;
+			}
+			return false;
+		}
+
+		if (!hookBlockbenchExport()) {
+			const interval = setInterval(() => {
+				if (hookBlockbenchExport()) clearInterval(interval);
+			}, 300);
+			setTimeout(() => clearInterval(interval), 15000);
+		}
+	}
+
+	// -------------------------------------------------------------
+	// 5. UI Construction & Event Handlers
 	// -------------------------------------------------------------
 	function initMobileControls() {
 		// Realtime FPS Counter
 		const fpsCounter = document.createElement('div');
 		fpsCounter.id = 'mb-fps-counter';
-		fpsCounter.textContent = 'FPS: 60';
+		fpsCounter.textContent = 'FPS: 120';
+		fpsCounter.title = 'Click to hide FPS';
 		if (config.showFps) fpsCounter.style.display = 'block';
+		fpsCounter.addEventListener('click', () => toggleFpsDisplay());
 		document.body.appendChild(fpsCounter);
 
 		// Virtual Cursor DOM Element (Always Visible)
@@ -221,6 +429,12 @@
 		updateCursorRender();
 
 		// Bind Header Native Buttons
+		const nativeFpsBtn = document.getElementById('btn_native_toggle_fps');
+		if (nativeFpsBtn) {
+			nativeFpsBtn.addEventListener('click', () => toggleFpsDisplay());
+			if (config.showFps) nativeFpsBtn.classList.add('active');
+		}
+
 		const nativeFsBtn = document.getElementById('btn_native_fullscreen');
 		if (nativeFsBtn) {
 			nativeFsBtn.addEventListener('click', toggleFullscreen);
@@ -235,7 +449,7 @@
 		createIndependentButton('lmb', config.lmbPos, 0);
 		createIndependentButton('rmb', config.rmbPos, 2);
 
-		// Touch drag steering on viewport
+		// Multi-touch touchpad steering on viewport
 		setupScreenTouchpad();
 
 		// Quick Settings Modal
@@ -243,6 +457,12 @@
 
 		// Apply UI Scale
 		applyUiScale();
+
+		// Sync Native High Refresh Rate
+		syncRefreshRateWithNative();
+
+		// Setup Export Hooks
+		setupExportHooks();
 	}
 
 	// SVG Mouse Icons (LMB highlighted vs RMB highlighted)
@@ -282,8 +502,8 @@
 		let isHeld = false;
 
 		btn.addEventListener('touchstart', (e) => {
-			if (e.touches.length === 1) {
-				const t = e.touches[0];
+			if (e.changedTouches.length > 0) {
+				const t = e.changedTouches[0];
 				startX = t.clientX;
 				startY = t.clientY;
 				const rect = btn.getBoundingClientRect();
@@ -291,6 +511,8 @@
 				initialTop = rect.top;
 				isDragging = false;
 				isHeld = true;
+				if (mouseButton === 0) isLmbHeld = true;
+				if (mouseButton === 2) isRmbHeld = true;
 				btn.classList.add('held');
 				triggerHaptic(16);
 
@@ -300,8 +522,8 @@
 		}, { passive: true });
 
 		btn.addEventListener('touchmove', (e) => {
-			if (e.touches.length === 1) {
-				const t = e.touches[0];
+			if (e.changedTouches.length > 0) {
+				const t = e.changedTouches[0];
 				const dx = t.clientX - startX;
 				const dy = t.clientY - startY;
 
@@ -330,6 +552,8 @@
 			if (isHeld) {
 				btn.classList.remove('held');
 				isHeld = false;
+				if (mouseButton === 0) isLmbHeld = false;
+				if (mouseButton === 2) isRmbHeld = false;
 				dispatchMouseEvent('mouseup', mouseButton);
 
 				if (!isDragging) {
@@ -343,40 +567,75 @@
 			}
 		}, { passive: true });
 
+		btn.addEventListener('touchcancel', () => {
+			if (isHeld) {
+				btn.classList.remove('held');
+				isHeld = false;
+				if (mouseButton === 0) isLmbHeld = false;
+				if (mouseButton === 2) isRmbHeld = false;
+				dispatchMouseEvent('mouseup', mouseButton);
+			}
+		}, { passive: true });
+
 		document.body.appendChild(btn);
 	}
 
 	function setupScreenTouchpad() {
+		let touchpadTouchId = null;
 		let lastX = 0, lastY = 0;
-		let tracking = false;
 
 		window.addEventListener('touchstart', (e) => {
-			if (e.touches.length === 1) {
-				const target = e.target;
-				// Skip if touching interactive buttons or header
-				if (target.closest('.floating-mouse-btn') || target.closest('#native_header_mobile_tools') || target.closest('#mb-settings-modal')) {
-					tracking = false;
-					return;
+			for (let i = 0; i < e.changedTouches.length; i++) {
+				const t = e.changedTouches[i];
+				const target = t.target;
+				if (
+					target.closest('.floating-mouse-btn') ||
+					target.closest('#native_header_mobile_tools') ||
+					target.closest('#mb-settings-modal')
+				) {
+					continue;
 				}
-				tracking = true;
-				lastX = e.touches[0].clientX;
-				lastY = e.touches[0].clientY;
+
+				if (touchpadTouchId === null) {
+					touchpadTouchId = t.identifier;
+					lastX = t.clientX;
+					lastY = t.clientY;
+					break;
+				}
 			}
 		}, { passive: true });
 
 		window.addEventListener('touchmove', (e) => {
-			if (tracking && e.touches.length === 1) {
-				const dx = (e.touches[0].clientX - lastX) * config.cursorSpeed;
-				const dy = (e.touches[0].clientY - lastY) * config.cursorSpeed;
-				setCursorPosition(cursorX + dx, cursorY + dy);
-				lastX = e.touches[0].clientX;
-				lastY = e.touches[0].clientY;
+			if (touchpadTouchId === null) return;
+
+			for (let i = 0; i < e.changedTouches.length; i++) {
+				const t = e.changedTouches[i];
+				if (t.identifier === touchpadTouchId) {
+					const dx = (t.clientX - lastX) * config.cursorSpeed;
+					const dy = (t.clientY - lastY) * config.cursorSpeed;
+					setCursorPosition(cursorX + dx, cursorY + dy);
+					lastX = t.clientX;
+					lastY = t.clientY;
+
+					// Dispatch mousemove to support 3D orbit and dragging
+					dispatchMouseMove();
+					break;
+				}
 			}
 		}, { passive: true });
 
-		window.addEventListener('touchend', () => {
-			tracking = false;
-		}, { passive: true });
+		function handleTouchEnd(e) {
+			if (touchpadTouchId === null) return;
+			for (let i = 0; i < e.changedTouches.length; i++) {
+				if (e.changedTouches[i].identifier === touchpadTouchId) {
+					touchpadTouchId = null;
+					break;
+				}
+			}
+		}
+
+		window.addEventListener('touchend', handleTouchEnd, { passive: true });
+		window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 	}
 
 	function applyUiScale() {
@@ -397,7 +656,7 @@
 	}
 
 	// -------------------------------------------------------------
-	// 5. Quick Settings Modal
+	// 6. Quick Settings Modal
 	// -------------------------------------------------------------
 	function createQuickSettingsModal() {
 		const modal = document.createElement('div');
@@ -481,15 +740,14 @@
 		fpsSelect.value = String(config.fpsLimit);
 		fpsSelect.addEventListener('change', (e) => {
 			config.fpsLimit = e.target.value === 'uncapped' ? 'uncapped' : Number(e.target.value);
+			syncRefreshRateWithNative();
 			saveConfig();
 		});
 
 		const showFpsCb = document.getElementById('mb-set-showfps');
 		showFpsCb.checked = config.showFps;
 		showFpsCb.addEventListener('change', (e) => {
-			config.showFps = e.target.checked;
-			document.getElementById('mb-fps-counter').style.display = config.showFps ? 'block' : 'none';
-			saveConfig();
+			toggleFpsDisplay(e.target.checked);
 		});
 
 		const resSelect = document.getElementById('mb-set-res');
@@ -584,7 +842,7 @@
 	}
 
 	// -------------------------------------------------------------
-	// 6. Auto-Save Backup Daemon
+	// 7. Auto-Save Backup Daemon
 	// -------------------------------------------------------------
 	function startAutoSaveDaemon() {
 		setInterval(() => {
@@ -613,6 +871,7 @@
 		config,
 		saveConfig,
 		triggerHaptic,
-		toggleFullscreen
+		toggleFullscreen,
+		toggleFpsDisplay
 	};
 })();
