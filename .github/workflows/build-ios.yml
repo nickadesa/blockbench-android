@@ -12,7 +12,7 @@ permissions:
 jobs:
   package-ios:
     name: Package iOS Deliverable
-    runs-on: macos-14
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository

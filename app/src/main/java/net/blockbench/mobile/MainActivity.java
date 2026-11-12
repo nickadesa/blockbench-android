@@ -216,11 +216,6 @@ public class MainActivity extends AppCompatActivity {
                         params.preferredRefreshRate = targetFps;
                     }
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        params.preferredMinDisplayRefreshRate = targetFps;
-                        params.preferredMaxDisplayRefreshRate = targetFps;
-                    }
-
                     getWindow().setAttributes(params);
                 }
             } catch (Exception ignored) {}
