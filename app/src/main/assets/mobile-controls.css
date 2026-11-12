@@ -105,10 +105,42 @@ header {
 
 .floating-controller-btn.sticky-locked,
 .floating-controller-btn.modifier-active {
-	background: rgba(46, 204, 113, 0.35);
-	border-color: #2ecc71;
-	box-shadow: 0 0 14px rgba(46, 204, 113, 0.75);
+	background: #2ecc71 !important;
+	border-color: #27ae60 !important;
+	border-width: 2.5px !important;
+	box-shadow: 0 0 20px rgba(46, 204, 113, 0.95), 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+	color: #092613 !important;
+	transform: scale(1.05);
+	flex-direction: column;
+	gap: 1px;
+}
+
+.floating-controller-btn .mb-mod-label {
+	font-weight: 800;
+	font-size: 11px;
+	letter-spacing: 0.5px;
+	line-height: 1.1;
+}
+
+.floating-controller-btn.modifier-active .mb-mod-label {
+	color: #092613 !important;
+	font-weight: 900;
+}
+
+.floating-controller-btn .mb-mod-badge {
+	display: none;
+}
+
+.floating-controller-btn.modifier-active .mb-mod-badge {
+	display: block;
+	font-size: 9px;
+	font-weight: 900;
+	background: #092613;
 	color: #2ecc71;
+	padding: 1px 5px;
+	border-radius: 4px;
+	letter-spacing: 0.5px;
+	line-height: 1.1;
 }
 
 .floating-controller-btn.in-edit-mode {

@@ -60,33 +60,41 @@
 			<!-- Settings Card -->
 			<div id="ai-settings-card">
 				<div class="ai-setting-field">
-					<span class="ai-setting-label">API Key (Stored locally on device):</span>
-					<input type="password" class="ai-setting-input" id="ai-apikey-input" placeholder="Paste Gemini, Groq, or Cloudflare Key">
+					<span class="ai-setting-label">API Key (Auto-Detects Provider & Fetches Live Models):</span>
+					<div class="ai-key-input-row">
+						<input type="password" class="ai-setting-input" id="ai-apikey-input" placeholder="Paste Gemini, Groq, or Cloudflare Key">
+						<button class="ai-btn-detect" id="ai-btn-detect" type="button" title="Fetch Live Models from API">Fetch Models</button>
+					</div>
 					<div id="ai-detected-badge" class="ai-detected-badge" style="display:none;"></div>
+				</div>
+				<div class="ai-setting-field">
+					<span class="ai-setting-label">Active Model (Loaded Live from Provider API):</span>
+					<select class="ai-setting-select" id="ai-model-select"></select>
 				</div>
 				<div class="ai-setting-field" id="ai-cf-account-row" style="display:none;">
 					<span class="ai-setting-label">Cloudflare Account ID:</span>
 					<input type="text" class="ai-setting-input" id="ai-cf-account-input" placeholder="e.g. 1a2b3c4d5e6f...">
 				</div>
-				<div class="ai-setting-field">
-					<span class="ai-setting-label">AI Provider:</span>
-					<select class="ai-setting-select" id="ai-provider-select">
-						<option value="gemini">Google Gemini (Official REST)</option>
-						<option value="groq">Groq Cloud (Fast LPU)</option>
-						<option value="cloudflare">Cloudflare Workers AI</option>
-						<option value="freellmapi">FreeLLMAPI (Relay / Local)</option>
-						<option value="openrouter">OpenRouter</option>
-						<option value="openai">OpenAI</option>
-						<option value="custom">Custom OpenAI Endpoint</option>
-					</select>
+				<div class="ai-advanced-toggle-row">
+					<button class="ai-link-btn" id="ai-toggle-advanced" type="button">Advanced Provider / Endpoint Settings</button>
 				</div>
-				<div class="ai-setting-field">
-					<span class="ai-setting-label">Model Selection:</span>
-					<select class="ai-setting-select" id="ai-model-select"></select>
-				</div>
-				<div class="ai-setting-field">
-					<span class="ai-setting-label">Endpoint Base URL:</span>
-					<input type="text" class="ai-setting-input" id="ai-baseurl-input" placeholder="https://...">
+				<div id="ai-advanced-section" style="display:none; flex-direction:column; gap:8px;">
+					<div class="ai-setting-field">
+						<span class="ai-setting-label">AI Provider Override:</span>
+						<select class="ai-setting-select" id="ai-provider-select">
+							<option value="gemini">Google Gemini (Official REST)</option>
+							<option value="groq">Groq Cloud (Fast LPU)</option>
+							<option value="cloudflare">Cloudflare Workers AI</option>
+							<option value="freellmapi">FreeLLMAPI (Relay / Local)</option>
+							<option value="openrouter">OpenRouter</option>
+							<option value="openai">OpenAI</option>
+							<option value="custom">Custom OpenAI Endpoint</option>
+						</select>
+					</div>
+					<div class="ai-setting-field">
+						<span class="ai-setting-label">Endpoint Base URL:</span>
+						<input type="text" class="ai-setting-input" id="ai-baseurl-input" placeholder="https://...">
+					</div>
 				</div>
 				<div class="ai-settings-actions">
 					<button class="ai-test-btn" id="ai-test-connection-btn">Test Connection</button>
@@ -182,11 +190,23 @@
 		const cfAccountInput = document.getElementById('ai-cf-account-input');
 		const testBtn = document.getElementById('ai-test-connection-btn');
 		const testStatus = document.getElementById('ai-test-status');
+		const btnDetect = document.getElementById('ai-btn-detect');
+		const toggleAdvBtn = document.getElementById('ai-toggle-advanced');
+		const advSection = document.getElementById('ai-advanced-section');
 
-		function populateModelSelect(providerKey, selectedModel) {
+		if (toggleAdvBtn && advSection) {
+			toggleAdvBtn.addEventListener('click', () => {
+				const isHidden = advSection.style.display === 'none';
+				advSection.style.display = isHidden ? 'flex' : 'none';
+				toggleAdvBtn.textContent = isHidden
+					? 'Hide Advanced Provider / Endpoint Settings'
+					: 'Advanced Provider / Endpoint Settings';
+			});
+		}
+
+		function populateModelSelect(modelsList, selectedModel) {
 			modelSelect.innerHTML = '';
-			const provider = window.DEFAULT_PROVIDERS ? window.DEFAULT_PROVIDERS[providerKey] : null;
-			const models = (provider && provider.models) ? provider.models : [selectedModel || 'default'];
+			const models = Array.isArray(modelsList) && modelsList.length > 0 ? modelsList : [selectedModel || 'default'];
 
 			models.forEach((m) => {
 				const opt = document.createElement('option');
@@ -205,28 +225,81 @@
 			}
 		}
 
-		function applyAutoDetection(key) {
-			if (!window.detectProviderFromKey) return;
-			const detected = window.detectProviderFromKey(key);
-			if (detected && window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[detected]) {
-				const pInfo = window.DEFAULT_PROVIDERS[detected];
-				detectedBadge.style.display = 'inline-block';
-				detectedBadge.textContent = `Auto-Detected: ${pInfo.name}`;
-				providerSelect.value = detected;
-				baseUrlInput.value = pInfo.defaultBaseUrl;
-				populateModelSelect(detected, pInfo.defaultModel);
+		let isFetchingModels = false;
+		async function detectAndFetchLiveModels(key, forceProvider = null) {
+			if (!key || isFetchingModels) return;
+			const trimmedKey = key.trim();
+			if (!trimmedKey) return;
 
-				if (detected === 'cloudflare') {
-					cfAccountRow.style.display = 'flex';
-					if (key.includes(':')) {
-						const parts = key.split(':');
-						cfAccountInput.value = parts[0].trim();
-					}
-				} else {
-					cfAccountRow.style.display = 'none';
+			let targetProvider = forceProvider;
+			if (!targetProvider && window.detectProviderFromKey) {
+				targetProvider = window.detectProviderFromKey(trimmedKey);
+			}
+			if (!targetProvider) {
+				targetProvider = providerSelect.value || 'gemini';
+			}
+
+			providerSelect.value = targetProvider;
+			if (window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[targetProvider]) {
+				const pInfo = window.DEFAULT_PROVIDERS[targetProvider];
+				if (!baseUrlInput.value) baseUrlInput.value = pInfo.defaultBaseUrl;
+			}
+
+			if (targetProvider === 'cloudflare') {
+				cfAccountRow.style.display = 'flex';
+				if (trimmedKey.includes(':')) {
+					const parts = trimmedKey.split(':');
+					cfAccountInput.value = parts[0].trim();
 				}
 			} else {
-				detectedBadge.style.display = 'none';
+				cfAccountRow.style.display = 'none';
+			}
+
+			const provName = (window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[targetProvider])
+				? window.DEFAULT_PROVIDERS[targetProvider].name
+				: targetProvider;
+
+			detectedBadge.style.display = 'block';
+			detectedBadge.className = 'ai-detected-badge loading';
+			detectedBadge.textContent = `Connecting to ${provName} API & fetching live models...`;
+
+			isFetchingModels = true;
+			try {
+				if (window.AIProvider) {
+					window.AIProvider.config.activeProvider = targetProvider;
+					window.AIProvider.config.apiKey = trimmedKey;
+					window.AIProvider.config.baseUrl = baseUrlInput.value.trim();
+					window.AIProvider.config.cloudflareAccountId = cfAccountInput.value.trim();
+
+					const liveModels = await window.AIProvider.fetchLiveModels(targetProvider, trimmedKey);
+					if (liveModels && liveModels.length > 0) {
+						let bestModel = liveModels[0];
+						if (targetProvider === 'gemini') {
+							const preferred = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+							const match = preferred.find((p) => liveModels.includes(p));
+							if (match) bestModel = match;
+						} else if (targetProvider === 'groq') {
+							const preferred = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+							const match = preferred.find((p) => liveModels.includes(p));
+							if (match) bestModel = match;
+						}
+						populateModelSelect(liveModels, bestModel);
+						window.AIProvider.config.model = bestModel;
+						window.AIProvider.saveConfig();
+
+						detectedBadge.className = 'ai-detected-badge success';
+						detectedBadge.textContent = `[Connected] ${provName}: ${liveModels.length} live models loaded from API`;
+					}
+				}
+			} catch (err) {
+				detectedBadge.className = 'ai-detected-badge error';
+				detectedBadge.textContent = `[Connection Issue] ${provName}: ${err.message || String(err)}`;
+				const fallbackInfo = window.DEFAULT_PROVIDERS ? window.DEFAULT_PROVIDERS[targetProvider] : null;
+				if (fallbackInfo) {
+					populateModelSelect(fallbackInfo.models, fallbackInfo.defaultModel);
+				}
+			} finally {
+				isFetchingModels = false;
 			}
 		}
 
@@ -235,27 +308,63 @@
 			apiKeyInput.value = window.AIProvider.config.apiKey || '';
 			baseUrlInput.value = window.AIProvider.config.baseUrl || '';
 			cfAccountInput.value = window.AIProvider.config.cloudflareAccountId || '';
-			populateModelSelect(providerSelect.value, window.AIProvider.config.model);
+
+			const curProvider = providerSelect.value;
+			const initialModels = (window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[curProvider])
+				? window.DEFAULT_PROVIDERS[curProvider].models
+				: [];
+			populateModelSelect(initialModels, window.AIProvider.config.model);
 
 			if (providerSelect.value === 'cloudflare') {
 				cfAccountRow.style.display = 'flex';
 			}
-			if (apiKeyInput.value) {
-				applyAutoDetection(apiKeyInput.value);
+
+			if (apiKeyInput.value.trim()) {
+				detectAndFetchLiveModels(apiKeyInput.value.trim(), window.AIProvider.config.activeProvider);
 			}
 		}
 
+		let inputTimer = null;
 		apiKeyInput.addEventListener('input', (e) => {
-			applyAutoDetection(e.target.value);
+			clearTimeout(inputTimer);
+			const val = e.target.value.trim();
+			if (!val) {
+				detectedBadge.style.display = 'none';
+				return;
+			}
+			inputTimer = setTimeout(() => {
+				detectAndFetchLiveModels(val);
+			}, 600);
 		});
+
+		if (btnDetect) {
+			btnDetect.addEventListener('click', () => {
+				const val = apiKeyInput.value.trim();
+				if (val) {
+					detectAndFetchLiveModels(val, providerSelect.value);
+				} else {
+					alert('Please enter your API Key first.');
+				}
+			});
+		}
 
 		providerSelect.addEventListener('change', (e) => {
 			const prov = e.target.value;
 			if (window.DEFAULT_PROVIDERS && window.DEFAULT_PROVIDERS[prov]) {
 				baseUrlInput.value = window.DEFAULT_PROVIDERS[prov].defaultBaseUrl;
-				populateModelSelect(prov, window.DEFAULT_PROVIDERS[prov].defaultModel);
 			}
 			cfAccountRow.style.display = prov === 'cloudflare' ? 'flex' : 'none';
+			const val = apiKeyInput.value.trim();
+			if (val) {
+				detectAndFetchLiveModels(val, prov);
+			}
+		});
+
+		modelSelect.addEventListener('change', (e) => {
+			if (window.AIProvider) {
+				window.AIProvider.config.model = e.target.value;
+				window.AIProvider.saveConfig();
+			}
 		});
 
 		testBtn.addEventListener('click', async () => {

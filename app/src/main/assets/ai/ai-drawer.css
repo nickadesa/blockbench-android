@@ -154,16 +154,73 @@
 	border-color: var(--ai-accent);
 }
 
+.ai-key-input-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.ai-btn-detect {
+	background: var(--ai-accent);
+	color: #ffffff;
+	border: none;
+	border-radius: 6px;
+	padding: 7px 11px;
+	font-size: 11px;
+	font-weight: 700;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: background 0.15s;
+}
+
+.ai-btn-detect:active {
+	background: var(--ai-accent-hover);
+}
+
 .ai-detected-badge {
-	font-size: 10.5px;
-	padding: 3px 8px;
-	border-radius: 4px;
-	background: rgba(62, 144, 255, 0.15);
-	border: 1px solid rgba(62, 144, 255, 0.35);
-	color: var(--ai-accent);
+	font-size: 11px;
+	padding: 4px 8px;
+	border-radius: 5px;
 	font-weight: 600;
-	margin-top: 2px;
+	margin-top: 4px;
 	display: inline-block;
+	word-break: break-all;
+	line-height: 1.3;
+}
+
+.ai-detected-badge.loading {
+	background: rgba(62, 144, 255, 0.18);
+	border: 1px solid rgba(62, 144, 255, 0.5);
+	color: var(--ai-accent);
+}
+
+.ai-detected-badge.success {
+	background: rgba(46, 204, 113, 0.18);
+	border: 1px solid rgba(46, 204, 113, 0.65);
+	color: #2ecc71;
+}
+
+.ai-detected-badge.error {
+	background: rgba(231, 76, 60, 0.18);
+	border: 1px solid rgba(231, 76, 60, 0.65);
+	color: #e74c3c;
+}
+
+.ai-advanced-toggle-row {
+	margin-top: 2px;
+	display: flex;
+	justify-content: flex-start;
+}
+
+.ai-link-btn {
+	background: none;
+	border: none;
+	color: var(--ai-accent);
+	font-size: 11px;
+	cursor: pointer;
+	text-decoration: underline;
+	padding: 2px 0;
 }
 
 .ai-settings-actions {

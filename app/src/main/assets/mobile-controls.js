@@ -189,8 +189,67 @@
 		alt: false
 	};
 
+	function hookPressingGlobal() {
+		try {
+			if (!window.Pressing) return;
+			if (window.Pressing.__hooked) return;
+			window.Pressing.__hooked = true;
+			if (!window.Pressing.overrides) {
+				window.Pressing.overrides = { shift: false, ctrl: false, alt: false };
+			}
+			['ctrl', 'shift', 'alt'].forEach((k) => {
+				let val = window.Pressing[k] || false;
+				let overrideVal = window.Pressing.overrides[k] || false;
+				Object.defineProperty(window.Pressing, k, {
+					get() {
+						return modifierStates[k] ? true : val;
+					},
+					set(v) {
+						val = v;
+					},
+					configurable: true,
+					enumerable: true
+				});
+				Object.defineProperty(window.Pressing.overrides, k, {
+					get() {
+						return modifierStates[k] ? true : overrideVal;
+					},
+					set(v) {
+						overrideVal = v;
+					},
+					configurable: true,
+					enumerable: true
+				});
+			});
+		} catch (e) {}
+	}
+
+	function installModifierEventCapture() {
+		const eventTypes = [
+			'pointerdown', 'pointermove', 'pointerup',
+			'mousedown', 'mousemove', 'mouseup',
+			'touchstart', 'touchmove', 'touchend',
+			'click', 'contextmenu'
+		];
+		eventTypes.forEach((type) => {
+			window.addEventListener(type, (e) => {
+				if (modifierStates.ctrl) {
+					try { Object.defineProperty(e, 'ctrlKey', { get: () => true, configurable: true }); } catch (err) {}
+					try { Object.defineProperty(e, 'ctrlOrCmd', { get: () => true, configurable: true }); } catch (err) {}
+				}
+				if (modifierStates.shift) {
+					try { Object.defineProperty(e, 'shiftKey', { get: () => true, configurable: true }); } catch (err) {}
+				}
+				if (modifierStates.alt) {
+					try { Object.defineProperty(e, 'altKey', { get: () => true, configurable: true }); } catch (err) {}
+				}
+			}, { capture: true, passive: false });
+		});
+	}
+
 	function setModifierState(key, active) {
 		modifierStates[key] = active;
+		hookPressingGlobal();
 
 		// 1. Sync with Blockbench Pressing global object
 		if (window.Pressing) {
@@ -201,15 +260,7 @@
 			window.Pressing.overrides[key] = active;
 		}
 
-		// 2. Dispatch Blockbench internal modifier event
-		if (window.Blockbench && typeof window.Blockbench.dispatchEvent === 'function') {
-			window.Blockbench.dispatchEvent('update_pressed_modifier_keys', {
-				key: key,
-				active: active
-			});
-		}
-
-		// 3. Dispatch standard window KeyboardEvent for global listeners
+		// 2. Dispatch standard window KeyboardEvent for global listeners
 		const eventName = active ? 'keydown' : 'keyup';
 		const keyMap = {
 			ctrl: { key: 'Control', code: 'ControlLeft', keyCode: 17, which: 17 },
@@ -218,8 +269,9 @@
 		};
 
 		const info = keyMap[key];
+		let ev = null;
 		if (info) {
-			const ev = new KeyboardEvent(eventName, {
+			ev = new KeyboardEvent(eventName, {
 				key: info.key,
 				code: info.code,
 				keyCode: info.keyCode,
@@ -234,10 +286,44 @@
 			document.dispatchEvent(ev);
 		}
 
-		// Update button visual state
+		// 3. Dispatch Blockbench internal modifier event with expected structure { before, now, event }
+		if (window.Blockbench && typeof window.Blockbench.dispatchEvent === 'function') {
+			const beforeState = {
+				shift: key === 'shift' ? !active : modifierStates.shift,
+				ctrl: key === 'ctrl' ? !active : modifierStates.ctrl,
+				alt: key === 'alt' ? !active : modifierStates.alt
+			};
+			const nowState = {
+				shift: modifierStates.shift,
+				ctrl: modifierStates.ctrl,
+				alt: modifierStates.alt
+			};
+			try {
+				window.Blockbench.dispatchEvent('update_pressed_modifier_keys', {
+					before: beforeState,
+					now: nowState,
+					event: ev || new Event(eventName)
+				});
+			} catch (e) {}
+		}
+
+		// Update button visual state with unmistakable bright solid green and [ON] badge
 		const btn = renderedButtons[key];
 		if (btn) {
 			btn.classList.toggle('modifier-active', active);
+			if (active) {
+				btn.innerHTML = `<span class="mb-mod-label">${key.toUpperCase()}</span><span class="mb-mod-badge">ON</span>`;
+				btn.style.setProperty('background', '#2ecc71', 'important');
+				btn.style.setProperty('border-color', '#27ae60', 'important');
+				btn.style.setProperty('color', '#092613', 'important');
+				btn.style.setProperty('box-shadow', '0 0 18px rgba(46, 204, 113, 0.95), 0 4px 12px rgba(0, 0, 0, 0.6)', 'important');
+			} else {
+				btn.innerHTML = `<span class="mb-mod-label">${key.toUpperCase()}</span>`;
+				btn.style.removeProperty('background');
+				btn.style.removeProperty('border-color');
+				btn.style.removeProperty('color');
+				btn.style.removeProperty('box-shadow');
+			}
 		}
 	}
 
@@ -388,12 +474,20 @@
 
 		if (def.svg) {
 			btn.innerHTML = def.svg;
+		} else if (def.type === 'modifier') {
+			btn.innerHTML = modifierStates[key]
+				? `<span class="mb-mod-label">${def.label}</span><span class="mb-mod-badge">ON</span>`
+				: `<span class="mb-mod-label">${def.label}</span>`;
 		} else {
 			btn.textContent = def.label;
 		}
 
 		if (def.type === 'modifier' && modifierStates[key]) {
 			btn.classList.add('modifier-active');
+			btn.style.setProperty('background', '#2ecc71', 'important');
+			btn.style.setProperty('border-color', '#27ae60', 'important');
+			btn.style.setProperty('color', '#092613', 'important');
+			btn.style.setProperty('box-shadow', '0 0 18px rgba(46, 204, 113, 0.95), 0 4px 12px rgba(0, 0, 0, 0.6)', 'important');
 		}
 
 		// Initial position
@@ -422,7 +516,9 @@
 
 			// Normal Mode: Trigger action
 			triggerHaptic(14);
-			btn.classList.add('held');
+			if (def.type !== 'modifier') {
+				btn.classList.add('held');
+			}
 
 			if (def.type === 'modifier') {
 				const nextState = !modifierStates[def.key];
@@ -832,6 +928,11 @@
 
 		// Apply UI Scale
 		applyUiScale();
+
+		// Synchronize Modifiers & Event Interception
+		hookPressingGlobal();
+		installModifierEventCapture();
+		setInterval(hookPressingGlobal, 800);
 
 		// Sync Native High Refresh Rate
 		syncRefreshRateWithNative();

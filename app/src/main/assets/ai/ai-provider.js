@@ -354,6 +354,85 @@
 			}
 		}
 
+		async fetchLiveModels(overrideProvider = null, overrideKey = null) {
+			const activeProvider = overrideProvider || this.config.activeProvider || 'gemini';
+			const provider = DEFAULT_PROVIDERS[activeProvider] || this.getProviderInfo();
+			const apiKey = (overrideKey !== null && overrideKey !== undefined) ? overrideKey : this.config.apiKey;
+
+			if (provider.type === 'gemini') {
+				if (!apiKey) throw new Error('Gemini API Key is missing');
+				const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+				const data = await safeHttpRequest(url, 'GET');
+				if (data && Array.isArray(data.models)) {
+					const models = data.models
+						.filter((m) => !m.supportedGenerationMethods || m.supportedGenerationMethods.includes('generateContent'))
+						.map((m) => m.name.replace(/^models\//, ''))
+						.filter((name) => !name.includes('embedding') && !name.includes('aqa') && !name.includes('imagen') && !name.includes('text-bison'));
+					if (models.length > 0) return models;
+				}
+				return ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+			}
+
+			if (activeProvider === 'groq') {
+				if (!apiKey) throw new Error('Groq API Key is missing');
+				const url = 'https://api.groq.com/openai/v1/models';
+				const data = await safeHttpRequest(url, 'GET', { 'Authorization': `Bearer ${apiKey}` });
+				if (data && Array.isArray(data.data)) {
+					const models = data.data
+						.map((m) => m.id)
+						.filter((id) => !id.includes('whisper') && !id.includes('embed') && !id.includes('distil') && !id.includes('guard'));
+					if (models.length > 0) return models;
+				}
+				return ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+			}
+
+			if (provider.type === 'cloudflare') {
+				let accountId = this.config.cloudflareAccountId || '';
+				let apiToken = apiKey || '';
+				if (apiToken.includes(':')) {
+					const parts = apiToken.split(':');
+					accountId = accountId || parts[0].trim();
+					apiToken = parts[1].trim();
+				}
+				if (!accountId) throw new Error('Cloudflare Account ID is required');
+				const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?per_page=50`;
+				try {
+					const data = await safeHttpRequest(url, 'GET', { 'Authorization': `Bearer ${apiToken}` });
+					if (data && Array.isArray(data.result)) {
+						const models = data.result
+							.map((m) => m.name)
+							.filter((n) => n.includes('llama') || n.includes('qwen') || n.includes('deepseek') || n.includes('mistral'));
+						if (models.length > 0) return models;
+					}
+				} catch (e) {}
+				return ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/qwen/qwen2.5-coder-32b-instruct'];
+			}
+
+			if (activeProvider === 'openrouter') {
+				const url = 'https://openrouter.ai/api/v1/models';
+				const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+				const data = await safeHttpRequest(url, 'GET', headers);
+				if (data && Array.isArray(data.data)) {
+					const freeModels = data.data.filter((m) => m.id.includes(':free')).map((m) => m.id);
+					return freeModels.length > 0 ? freeModels : data.data.slice(0, 30).map((m) => m.id);
+				}
+				return ['meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-exp:free'];
+			}
+
+			// FreeLLMAPI / Custom OpenAI endpoint
+			let base = this.config.baseUrl || (provider && provider.defaultBaseUrl) || 'http://localhost:3001/v1/chat/completions';
+			base = base.replace(/\/chat\/completions\/?$/, '');
+			const url = `${base}/models`;
+			const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+			try {
+				const data = await safeHttpRequest(url, 'GET', headers);
+				if (data && Array.isArray(data.data)) {
+					return data.data.map((m) => m.id);
+				}
+			} catch (e) {}
+			return (provider && provider.models) || ['default'];
+		}
+
 		async sendChat({ messages, images = [], tools = true }) {
 			const provider = this.getProviderInfo();
 			if (!this.config.apiKey && provider.type !== 'custom') {
