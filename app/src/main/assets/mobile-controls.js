@@ -1,31 +1,29 @@
 /**
- * Mobile Controls, Performance Tuning & Virtual Mouse Extension for Blockbench
+ * Mobile Controls, Performance Tuning & Independent Mouse Buttons for Blockbench
  * Created for Blockbench Android
- * Note: Strictly no emojis as requested.
+ * Note: Strictly no emojis and no third-party branding as requested.
  */
 
 (function () {
 	'use strict';
 
-	// Storage key for settings
 	const STORAGE_KEY = 'mb_controls_settings';
 
 	// Default Configuration
 	const config = {
-		fpsLimit: 60, // 30, 60, 90, 120, 'uncapped'
-		resolutionScale: 1.0, // 0.5, 0.75, 1.0
+		fpsLimit: 60,
+		resolutionScale: 1.0,
 		antiAliasing: true,
 		showFps: true,
 		haptics: true,
-		uiScale: 100, // 75% to 125%
-		touchMode: 'direct', // 'direct' or 'touchpad'
+		uiScale: 100,
 		cursorTemplate: 'classic_white', // classic_white, modern_black, macos_black, color_tint, custom
 		cursorColor: '#3e90ff',
 		customCursorUrl: '',
-		cursorSize: 24,
+		cursorSize: 28,
 		cursorSpeed: 1.2,
-		floatingBarOpacity: 92,
-		dpadVisible: false,
+		lmbPos: { x: 24, y: window.innerHeight - 100 },
+		rmbPos: { x: window.innerWidth - 80, y: window.innerHeight - 100 },
 		autoSaveMinutes: 2
 	};
 
@@ -45,7 +43,6 @@
 		} catch (e) {}
 	}
 
-	// Haptic Feedback Helper
 	function triggerHaptic(duration = 14) {
 		if (!config.haptics) return;
 		try {
@@ -58,14 +55,13 @@
 	}
 
 	// -------------------------------------------------------------
-	// 1. Performance Engine (FPS Throttling & Resolution Scale)
+	// 1. Performance Engine (FPS Throttler & Resolution Scale)
 	// -------------------------------------------------------------
 	let realFps = 60;
 	let frameCount = 0;
 	let lastFpsUpdate = performance.now();
-
-	const originalRAF = window.requestAnimationFrame.bind(window);
 	let lastFrameTime = performance.now();
+	const originalRAF = window.requestAnimationFrame.bind(window);
 
 	window.requestAnimationFrame = function (callback) {
 		if (config.fpsLimit === 'uncapped' || !config.fpsLimit) {
@@ -113,50 +109,55 @@
 	}
 
 	// -------------------------------------------------------------
-	// 2. Cursor Templates & Virtual Mouse
+	// 2. High-Visibility DOM Vector Cursor
 	// -------------------------------------------------------------
-	const cursorSVGs = {
-		classic_white: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M0,0 L0,24 L6.5,18 L12,28 L16,26 L10.5,16 L18.5,16 Z" fill="%23ffffff" stroke="%23000000" stroke-width="2" stroke-linejoin="round"/></svg>`,
-		modern_black: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M0,0 L0,24 L6.5,18 L12,28 L16,26 L10.5,16 L18.5,16 Z" fill="%231a1a1a" stroke="%23ffffff" stroke-width="2" stroke-linejoin="round"/></svg>`,
-		macos_black: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M5,2 L5,23.5 L10.5,18 L16,28 L19,26.5 L13.5,16.5 L21,16.5 Z" fill="%23111111" stroke="%23ffffff" stroke-width="2" stroke-linejoin="round"/></svg>`,
-		color_tint: (color) => `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M0,0 L0,24 L6.5,18 L12,28 L16,26 L10.5,16 L18.5,16 Z" fill="${encodeURIComponent(color)}" stroke="%23ffffff" stroke-width="2" stroke-linejoin="round"/></svg>`
-	};
-
 	let cursorX = window.innerWidth / 2;
 	let cursorY = window.innerHeight / 2;
-	const modifiers = { ctrl: false, alt: false, shift: false, space: false };
 
-	function getActiveCursorUrl() {
+	const cursorSVGs = {
+		classic_white: `
+			<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M2 2 L2 26 L8.5 20 L14.5 30 L18.5 28 L12.5 18 L20.5 18 Z" fill="#ffffff" stroke="#000000" stroke-width="2.2" stroke-linejoin="round"/>
+			</svg>`,
+		modern_black: `
+			<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M2 2 L2 26 L8.5 20 L14.5 30 L18.5 28 L12.5 18 L20.5 18 Z" fill="#14171a" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round"/>
+			</svg>`,
+		macos_black: `
+			<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M4 2 L4 24.5 L9.5 19 L15 29 L18 27.5 L12.5 17.5 L20 17.5 Z" fill="#111111" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+			</svg>`,
+		color_tint: (color) => `
+			<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M2 2 L2 26 L8.5 20 L14.5 30 L18.5 28 L12.5 18 L20.5 18 Z" fill="${color}" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round"/>
+			</svg>`
+	};
+
+	function updateCursorRender() {
+		const cursorContainer = document.getElementById('virtual-cursor-element');
+		if (!cursorContainer) return;
+
+		cursorContainer.style.width = `${config.cursorSize}px`;
+		cursorContainer.style.height = `${config.cursorSize}px`;
+
 		if (config.cursorTemplate === 'custom' && config.customCursorUrl) {
-			return config.customCursorUrl;
+			cursorContainer.innerHTML = `<img src="${config.customCursorUrl}" style="width:100%;height:100%;object-fit:contain;" alt="cursor">`;
+		} else if (config.cursorTemplate === 'color_tint') {
+			cursorContainer.innerHTML = cursorSVGs.color_tint(config.cursorColor || '#3e90ff');
+		} else {
+			cursorContainer.innerHTML = cursorSVGs[config.cursorTemplate] || cursorSVGs.classic_white;
 		}
-		if (config.cursorTemplate === 'color_tint') {
-			return cursorSVGs.color_tint(config.cursorColor || '#3e90ff');
-		}
-		return cursorSVGs[config.cursorTemplate] || cursorSVGs.classic_white;
-	}
-
-	function updateVirtualCursorElement() {
-		const cursorEl = document.getElementById('mb-virtual-cursor');
-		if (!cursorEl) return;
-		cursorEl.style.width = `${config.cursorSize}px`;
-		cursorEl.style.height = `${config.cursorSize}px`;
-		cursorEl.style.backgroundImage = `url("${getActiveCursorUrl()}")`;
-		cursorEl.style.backgroundSize = 'contain';
-		cursorEl.style.backgroundRepeat = 'no-repeat';
-		cursorEl.style.display = config.touchMode === 'touchpad' ? 'block' : 'none';
 	}
 
 	function setCursorPosition(x, y) {
 		cursorX = Math.max(0, Math.min(window.innerWidth - 1, x));
 		cursorY = Math.max(0, Math.min(window.innerHeight - 1, y));
-		const cursorEl = document.getElementById('mb-virtual-cursor');
-		if (cursorEl) {
-			cursorEl.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+		const cursorContainer = document.getElementById('virtual-cursor-element');
+		if (cursorContainer) {
+			cursorContainer.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
 		}
 	}
 
-	// Dispatch simulated mouse events to underlying element
 	function dispatchMouseEvent(type, button = 0) {
 		triggerHaptic(18);
 		const target = document.elementFromPoint(cursorX, cursorY) || document.body;
@@ -167,10 +168,7 @@
 			clientX: cursorX,
 			clientY: cursorY,
 			button: button,
-			buttons: type === 'mouseup' ? 0 : button === 0 ? 1 : button === 2 ? 2 : 4,
-			ctrlKey: modifiers.ctrl,
-			altKey: modifiers.alt,
-			shiftKey: modifiers.shift
+			buttons: type === 'mouseup' ? 0 : button === 0 ? 1 : button === 2 ? 2 : 4
 		});
 		target.dispatchEvent(event);
 	}
@@ -178,51 +176,36 @@
 	// -------------------------------------------------------------
 	// 3. Multi-Touch Gestures (2-finger Undo, 3-finger Redo)
 	// -------------------------------------------------------------
-	let touchStartCount = 0;
-	let touchStartTime = 0;
+	let touchCount = 0;
+	let touchStartTimestamp = 0;
 
 	window.addEventListener('touchstart', (e) => {
-		touchStartCount = e.touches.length;
-		touchStartTime = performance.now();
+		touchCount = e.touches.length;
+		touchStartTimestamp = performance.now();
 	}, { passive: true });
 
-	window.addEventListener('touchend', (e) => {
-		const duration = performance.now() - touchStartTime;
-		// Quick tap under 300ms
-		if (duration < 300) {
-			if (touchStartCount === 2) {
-				// 2 Finger Tap = Undo
+	window.addEventListener('touchend', () => {
+		const duration = performance.now() - touchStartTimestamp;
+		if (duration < 320) {
+			if (touchCount === 2) {
 				triggerHaptic(25);
 				if (window.Undo && window.Undo.undo) {
 					window.Undo.undo();
-				} else {
-					document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
 				}
-			} else if (touchStartCount === 3) {
-				// 3 Finger Tap = Redo
+			} else if (touchCount === 3) {
 				triggerHaptic(25);
 				if (window.Undo && window.Undo.redo) {
 					window.Undo.redo();
-				} else {
-					document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true }));
 				}
 			}
 		}
-		touchStartCount = 0;
+		touchCount = 0;
 	}, { passive: true });
 
 	// -------------------------------------------------------------
 	// 4. UI Construction & Event Handlers
 	// -------------------------------------------------------------
-	function initMobileUI() {
-		// Top-Right Fullscreen Toggle Square Button
-		const fsBtn = document.createElement('div');
-		fsBtn.id = 'fullscreen-toggle-btn';
-		fsBtn.title = 'Toggle Fullscreen';
-		fsBtn.innerHTML = `[ + ]`;
-		fsBtn.addEventListener('click', toggleFullscreen);
-		document.body.appendChild(fsBtn);
-
+	function initMobileControls() {
 		// Realtime FPS Counter
 		const fpsCounter = document.createElement('div');
 		fpsCounter.id = 'mb-fps-counter';
@@ -230,287 +213,174 @@
 		if (config.showFps) fpsCounter.style.display = 'block';
 		document.body.appendChild(fpsCounter);
 
-		// Camera Snap Widget
-		const camWidget = document.createElement('div');
-		camWidget.id = 'mb-camera-snap';
-		const views = [
-			{ id: 'iso', label: 'ISO' },
-			{ id: 'top', label: 'TOP' },
-			{ id: 'front', label: 'FRT' },
-			{ id: 'right', label: 'RGT' }
-		];
-		views.forEach((v) => {
-			const b = document.createElement('div');
-			b.className = 'mb-cam-btn';
-			b.textContent = v.label;
-			b.addEventListener('click', () => {
-				triggerHaptic(12);
-				snapCamera(v.id);
-			});
-			camWidget.appendChild(b);
-		});
-		document.body.appendChild(camWidget);
-
-		// Virtual Cursor Element
-		const cursorEl = document.createElement('div');
-		cursorEl.id = 'mb-virtual-cursor';
-		document.body.appendChild(cursorEl);
+		// Virtual Cursor DOM Element (Always Visible)
+		const cursorElement = document.createElement('div');
+		cursorElement.id = 'virtual-cursor-element';
+		document.body.appendChild(cursorElement);
 		setCursorPosition(cursorX, cursorY);
-		updateVirtualCursorElement();
+		updateCursorRender();
 
-		// Virtual Touchpad Overlay (active in touchpad mode)
-		const touchpadOverlay = document.createElement('div');
-		touchpadOverlay.id = 'mb-touchpad-overlay';
-		let lastTouchX = 0, lastTouchY = 0;
-		touchpadOverlay.addEventListener('touchstart', (e) => {
-			if (e.touches.length === 1) {
-				lastTouchX = e.touches[0].clientX;
-				lastTouchY = e.touches[0].clientY;
-			}
-		}, { passive: true });
-		touchpadOverlay.addEventListener('touchmove', (e) => {
-			if (e.touches.length === 1) {
-				const dx = (e.touches[0].clientX - lastTouchX) * config.cursorSpeed;
-				const dy = (e.touches[0].clientY - lastTouchY) * config.cursorSpeed;
-				setCursorPosition(cursorX + dx, cursorY + dy);
-				lastTouchX = e.touches[0].clientX;
-				lastTouchY = e.touches[0].clientY;
-			}
-		}, { passive: true });
-		document.body.appendChild(touchpadOverlay);
+		// Bind Header Native Buttons
+		const nativeFsBtn = document.getElementById('btn_native_fullscreen');
+		if (nativeFsBtn) {
+			nativeFsBtn.addEventListener('click', toggleFullscreen);
+		}
 
-		// Floating Toolbar Container
-		const bar = document.createElement('div');
-		bar.id = 'mb-floating-bar';
-		bar.style.background = `rgba(28, 32, 38, ${config.floatingBarOpacity / 100})`;
+		const nativeSetBtn = document.getElementById('btn_native_mobile_settings');
+		if (nativeSetBtn) {
+			nativeSetBtn.addEventListener('click', openSettingsModal);
+		}
 
-		// Drag Handle
-		const dragHandle = document.createElement('div');
-		dragHandle.id = 'mb-drag-handle';
-		setupDragging(bar, dragHandle);
-		bar.appendChild(dragHandle);
+		// Independent Floating Mouse Buttons (LMB & RMB)
+		createIndependentButton('lmb', config.lmbPos, 0);
+		createIndependentButton('rmb', config.rmbPos, 2);
 
-		// Row 1: Mouse Clicks + Mode + Hide
-		const row1 = document.createElement('div');
-		row1.className = 'mb-bar-row';
-
-		const lmbBtn = createBtn('LMB', () => {
-			dispatchMouseEvent('mousedown', 0);
-			setTimeout(() => dispatchMouseEvent('mouseup', 0), 60);
-			setTimeout(() => dispatchMouseEvent('click', 0), 70);
-		});
-		const rmbBtn = createBtn('RMB', () => {
-			dispatchMouseEvent('mousedown', 2);
-			setTimeout(() => dispatchMouseEvent('mouseup', 2), 60);
-			setTimeout(() => dispatchMouseEvent('contextmenu', 2), 70);
-		});
-		const mmbBtn = createBtn('MMB', () => {
-			dispatchMouseEvent('mousedown', 1);
-			setTimeout(() => dispatchMouseEvent('mouseup', 1), 60);
-		});
-		const modeBtn = createBtn(config.touchMode === 'touchpad' ? 'PAD' : 'TOUCH', () => {
-			config.touchMode = config.touchMode === 'touchpad' ? 'direct' : 'touchpad';
-			modeBtn.textContent = config.touchMode === 'touchpad' ? 'PAD' : 'TOUCH';
-			updateTouchMode();
-			saveConfig();
-		});
-		const minBtn = createBtn('[ - ]', () => {
-			bar.style.display = 'none';
-			miniBubble.style.display = 'flex';
-		});
-
-		row1.appendChild(lmbBtn);
-		row1.appendChild(rmbBtn);
-		row1.appendChild(mmbBtn);
-		row1.appendChild(modeBtn);
-		row1.appendChild(minBtn);
-		bar.appendChild(row1);
-
-		// Row 2: Sticky Modifiers + Gear
-		const row2 = document.createElement('div');
-		row2.className = 'mb-bar-row';
-
-		const ctrlBtn = createStickyBtn('CTRL', 'ctrl');
-		const altBtn = createStickyBtn('ALT', 'alt');
-		const shiftBtn = createStickyBtn('SHIFT', 'shift');
-		const spaceBtn = createStickyBtn('SPACE', 'space');
-		const gearBtn = createBtn('[ * ]', openSettingsModal);
-
-		row2.appendChild(ctrlBtn);
-		row2.appendChild(altBtn);
-		row2.appendChild(shiftBtn);
-		row2.appendChild(spaceBtn);
-		row2.appendChild(gearBtn);
-		bar.appendChild(row2);
-
-		// Row 3: Zoom Scroll Strip & D-Pad Toggle
-		const row3 = document.createElement('div');
-		row3.className = 'mb-bar-row';
-
-		const scrollStrip = document.createElement('div');
-		scrollStrip.id = 'mb-scroll-strip';
-		scrollStrip.innerHTML = '<span>+</span><span>ZOOM</span><span>-</span>';
-		setupZoomScroll(scrollStrip);
-		row3.appendChild(scrollStrip);
-
-		const dpadToggleBtn = createBtn('D-PAD', () => {
-			config.dpadVisible = !config.dpadVisible;
-			dpadContainer.style.display = config.dpadVisible ? 'grid' : 'none';
-			dpadToggleBtn.classList.toggle('active', config.dpadVisible);
-			saveConfig();
-		});
-		row3.appendChild(dpadToggleBtn);
-
-		bar.appendChild(row3);
-
-		// Precision D-Pad Container
-		const dpadContainer = document.createElement('div');
-		dpadContainer.id = 'mb-dpad-container';
-		if (config.dpadVisible) dpadContainer.style.display = 'grid';
-
-		const dpadLayout = [
-			{ k: '', l: '' },      { k: 'ArrowUp', l: '^' },    { k: '', l: '' },
-			{ k: 'ArrowLeft', l: '<' }, { k: 'Enter', l: 'OK' },     { k: 'ArrowRight', l: '>' },
-			{ k: '', l: '' },      { k: 'ArrowDown', l: 'v' },  { k: '', l: '' }
-		];
-
-		dpadLayout.forEach((d) => {
-			if (d.k) {
-				const db = document.createElement('div');
-				db.className = 'mb-dpad-btn';
-				db.textContent = d.l;
-				db.addEventListener('click', () => {
-					triggerHaptic(12);
-					document.dispatchEvent(new KeyboardEvent('keydown', { key: d.k, bubbles: true }));
-				});
-				dpadContainer.appendChild(db);
-			} else {
-				dpadContainer.appendChild(document.createElement('div'));
-			}
-		});
-		bar.appendChild(dpadContainer);
-
-		document.body.appendChild(bar);
-
-		// Collapsed Mini Bubble
-		const miniBubble = document.createElement('div');
-		miniBubble.id = 'mb-mini-bubble';
-		miniBubble.textContent = 'CTRL';
-		miniBubble.addEventListener('click', () => {
-			triggerHaptic(15);
-			miniBubble.style.display = 'none';
-			bar.style.display = 'flex';
-		});
-		setupDragging(miniBubble, miniBubble);
-		document.body.appendChild(miniBubble);
+		// Touch drag steering on viewport
+		setupScreenTouchpad();
 
 		// Quick Settings Modal
 		createQuickSettingsModal();
 
-		// Apply initial UI Scale
+		// Apply UI Scale
 		applyUiScale();
 	}
 
-	function createBtn(text, onClick) {
-		const b = document.createElement('div');
-		b.className = 'mb-btn';
-		b.textContent = text;
-		b.addEventListener('click', () => {
-			triggerHaptic(12);
-			onClick();
-		});
-		return b;
-	}
+	// SVG Mouse Icons (LMB highlighted vs RMB highlighted)
+	const mouseSvgLeft = `
+	<svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+		<rect x="7" y="3" width="22" height="30" rx="11" stroke="#ffffff" stroke-width="2" fill="#14181f"/>
+		<path d="M7 14 C7 7.9 11.9 3 18 3 L18 15 L7 15 Z" fill="#3e90ff"/>
+		<line x1="18" y1="3" x2="18" y2="15" stroke="#ffffff" stroke-width="1.5"/>
+		<line x1="7" y1="15" x2="29" y2="15" stroke="#ffffff" stroke-width="1.5"/>
+		<rect x="16.5" y="7" width="3" height="5.5" rx="1.5" fill="#ffffff"/>
+	</svg>`;
 
-	function createStickyBtn(text, modifierKey) {
-		const b = document.createElement('div');
-		b.className = 'mb-btn';
-		b.textContent = text;
-		b.addEventListener('click', () => {
-			modifiers[modifierKey] = !modifiers[modifierKey];
-			b.classList.toggle('active', modifiers[modifierKey]);
-			triggerHaptic(modifiers[modifierKey] ? 20 : 10);
-		});
-		return b;
-	}
+	const mouseSvgRight = `
+	<svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+		<rect x="7" y="3" width="22" height="30" rx="11" stroke="#ffffff" stroke-width="2" fill="#14181f"/>
+		<path d="M18 3 C24.1 3 29 7.9 29 14 L18 14 L18 3 Z" fill="#3e90ff"/>
+		<line x1="18" y1="3" x2="18" y2="15" stroke="#ffffff" stroke-width="1.5"/>
+		<line x1="7" y1="15" x2="29" y2="15" stroke="#ffffff" stroke-width="1.5"/>
+		<rect x="16.5" y="7" width="3" height="5.5" rx="1.5" fill="#ffffff"/>
+	</svg>`;
 
-	function setupDragging(target, handle) {
+	function createIndependentButton(id, pos, mouseButton) {
+		const btn = document.createElement('div');
+		btn.id = `mb-float-${id}`;
+		btn.className = 'floating-mouse-btn';
+		btn.title = mouseButton === 0 ? 'Left Mouse Click' : 'Right Mouse Click';
+		btn.innerHTML = mouseButton === 0 ? mouseSvgLeft : mouseSvgRight;
+
+		// Initial position
+		const initX = Math.max(10, Math.min(window.innerWidth - 70, pos.x));
+		const initY = Math.max(10, Math.min(window.innerHeight - 70, pos.y));
+		btn.style.left = `${initX}px`;
+		btn.style.top = `${initY}px`;
+
 		let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
-		handle.addEventListener('touchstart', (e) => {
+		let isDragging = false;
+		let isHeld = false;
+
+		btn.addEventListener('touchstart', (e) => {
 			if (e.touches.length === 1) {
-				startX = e.touches[0].clientX;
-				startY = e.touches[0].clientY;
-				const rect = target.getBoundingClientRect();
+				const t = e.touches[0];
+				startX = t.clientX;
+				startY = t.clientY;
+				const rect = btn.getBoundingClientRect();
 				initialLeft = rect.left;
 				initialTop = rect.top;
+				isDragging = false;
+				isHeld = true;
+				btn.classList.add('held');
+				triggerHaptic(16);
+
+				// Fire mousedown on target under cursor
+				dispatchMouseEvent('mousedown', mouseButton);
 			}
 		}, { passive: true });
 
-		handle.addEventListener('touchmove', (e) => {
+		btn.addEventListener('touchmove', (e) => {
 			if (e.touches.length === 1) {
-				const dx = e.touches[0].clientX - startX;
-				const dy = e.touches[0].clientY - startY;
-				target.style.left = `${Math.max(4, Math.min(window.innerWidth - 60, initialLeft + dx))}px`;
-				target.style.top = `${Math.max(4, Math.min(window.innerHeight - 60, initialTop + dy))}px`;
-				target.style.bottom = 'auto';
-			}
-		}, { passive: true });
-	}
+				const t = e.touches[0];
+				const dx = t.clientX - startX;
+				const dy = t.clientY - startY;
 
-	function setupZoomScroll(strip) {
-		let startY = 0;
-		strip.addEventListener('touchstart', (e) => {
-			if (e.touches.length === 1) {
-				startY = e.touches[0].clientY;
-			}
-		}, { passive: true });
+				if (!isDragging && Math.hypot(dx, dy) > 10) {
+					isDragging = true;
+				}
 
-		strip.addEventListener('touchmove', (e) => {
-			if (e.touches.length === 1) {
-				const dy = e.touches[0].clientY - startY;
-				if (Math.abs(dy) > 10) {
-					const delta = dy < 0 ? -120 : 120; // negative is zoom in
-					const target = document.elementFromPoint(cursorX, cursorY) || document.body;
-					target.dispatchEvent(new WheelEvent('wheel', {
-						deltaY: delta,
-						clientX: cursorX,
-						clientY: cursorY,
-						bubbles: true
-					}));
-					startY = e.touches[0].clientY;
-					triggerHaptic(8);
+				if (isDragging) {
+					const newX = Math.max(8, Math.min(window.innerWidth - 64, initialLeft + dx));
+					const newY = Math.max(8, Math.min(window.innerHeight - 64, initialTop + dy));
+					btn.style.left = `${newX}px`;
+					btn.style.top = `${newY}px`;
+
+					// Update stored position
+					if (id === 'lmb') {
+						config.lmbPos = { x: newX, y: newY };
+					} else {
+						config.rmbPos = { x: newX, y: newY };
+					}
+					saveConfig();
 				}
 			}
 		}, { passive: true });
+
+		btn.addEventListener('touchend', () => {
+			if (isHeld) {
+				btn.classList.remove('held');
+				isHeld = false;
+				dispatchMouseEvent('mouseup', mouseButton);
+
+				if (!isDragging) {
+					if (mouseButton === 0) {
+						dispatchMouseEvent('click', 0);
+					} else {
+						dispatchMouseEvent('contextmenu', 2);
+					}
+					triggerHaptic(14);
+				}
+			}
+		}, { passive: true });
+
+		document.body.appendChild(btn);
 	}
 
-	function updateTouchMode() {
-		const overlay = document.getElementById('mb-touchpad-overlay');
-		const cursor = document.getElementById('mb-virtual-cursor');
-		if (config.touchMode === 'touchpad') {
-			if (overlay) overlay.style.display = 'block';
-			if (cursor) cursor.style.display = 'block';
-		} else {
-			if (overlay) overlay.style.display = 'none';
-			if (cursor) cursor.style.display = 'none';
-		}
+	function setupScreenTouchpad() {
+		let lastX = 0, lastY = 0;
+		let tracking = false;
+
+		window.addEventListener('touchstart', (e) => {
+			if (e.touches.length === 1) {
+				const target = e.target;
+				// Skip if touching interactive buttons or header
+				if (target.closest('.floating-mouse-btn') || target.closest('#native_header_mobile_tools') || target.closest('#mb-settings-modal')) {
+					tracking = false;
+					return;
+				}
+				tracking = true;
+				lastX = e.touches[0].clientX;
+				lastY = e.touches[0].clientY;
+			}
+		}, { passive: true });
+
+		window.addEventListener('touchmove', (e) => {
+			if (tracking && e.touches.length === 1) {
+				const dx = (e.touches[0].clientX - lastX) * config.cursorSpeed;
+				const dy = (e.touches[0].clientY - lastY) * config.cursorSpeed;
+				setCursorPosition(cursorX + dx, cursorY + dy);
+				lastX = e.touches[0].clientX;
+				lastY = e.touches[0].clientY;
+			}
+		}, { passive: true });
+
+		window.addEventListener('touchend', () => {
+			tracking = false;
+		}, { passive: true });
 	}
 
 	function applyUiScale() {
 		document.body.style.zoom = `${config.uiScale}%`;
-	}
-
-	function snapCamera(viewId) {
-		// Use Blockbench camera angles if available
-		if (window.main_preview && window.main_preview.setCameraPosition) {
-			const dist = 50;
-			switch (viewId) {
-				case 'top': main_preview.setCameraPosition([0, dist, 0]); break;
-				case 'front': main_preview.setCameraPosition([0, 0, dist]); break;
-				case 'right': main_preview.setCameraPosition([dist, 0, 0]); break;
-				case 'iso': main_preview.setCameraPosition([dist * 0.7, dist * 0.7, dist * 0.7]); break;
-			}
-		}
 	}
 
 	function toggleFullscreen() {
@@ -521,10 +391,8 @@
 		}
 		if (!document.fullscreenElement) {
 			document.documentElement.requestFullscreen?.().catch(() => {});
-			document.getElementById('fullscreen-toggle-btn').innerHTML = '[ - ]';
 		} else {
 			document.exitFullscreen?.().catch(() => {});
-			document.getElementById('fullscreen-toggle-btn').innerHTML = '[ + ]';
 		}
 	}
 
@@ -537,7 +405,7 @@
 		modal.innerHTML = `
 			<div class="mb-modal-header">
 				<span>Mobile & Performance Settings</span>
-				<button class="mb-modal-close" id="mb-close-modal">X</button>
+				<button class="mb-modal-close" id="mb-close-modal">✕</button>
 			</div>
 			<div class="mb-setting-row">
 				<span class="mb-setting-label">FPS Limit:</span>
@@ -589,11 +457,16 @@
 			</div>
 			<div class="mb-setting-row">
 				<span class="mb-setting-label">Cursor Size (${config.cursorSize}px):</span>
-				<input type="range" id="mb-set-cursize" min="16" max="48" step="2" value="${config.cursorSize}">
+				<input type="range" id="mb-set-cursize" min="18" max="52" step="2" value="${config.cursorSize}">
 			</div>
 			<div class="mb-setting-row">
 				<span class="mb-setting-label">Cursor Speed:</span>
 				<input type="range" id="mb-set-curspeed" min="0.5" max="2.5" step="0.1" value="${config.cursorSpeed}">
+			</div>
+			<div class="mb-setting-row" style="margin-top: 14px;">
+				<button id="mb-reset-pos-btn" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer;">
+					Reset Button Positions
+				</button>
 			</div>
 		`;
 
@@ -655,30 +528,49 @@
 		curTemplate.addEventListener('change', (e) => {
 			config.cursorTemplate = e.target.value;
 			updateTemplateVisibility();
-			updateVirtualCursorElement();
+			updateCursorRender();
 			saveConfig();
 		});
 
 		document.getElementById('mb-set-curcolor').addEventListener('input', (e) => {
 			config.cursorColor = e.target.value;
-			updateVirtualCursorElement();
+			updateCursorRender();
 			saveConfig();
 		});
 
 		document.getElementById('mb-set-cururl').addEventListener('change', (e) => {
 			config.customCursorUrl = e.target.value;
-			updateVirtualCursorElement();
+			updateCursorRender();
 			saveConfig();
 		});
 
 		document.getElementById('mb-set-cursize').addEventListener('input', (e) => {
 			config.cursorSize = Number(e.target.value);
-			updateVirtualCursorElement();
+			updateCursorRender();
 			saveConfig();
 		});
 
 		document.getElementById('mb-set-curspeed').addEventListener('input', (e) => {
 			config.cursorSpeed = Number(e.target.value);
+			saveConfig();
+		});
+
+		document.getElementById('mb-reset-pos-btn').addEventListener('click', () => {
+			triggerHaptic(18);
+			const lmb = document.getElementById('mb-float-lmb');
+			const rmb = document.getElementById('mb-float-rmb');
+			const defaultLmb = { x: 24, y: window.innerHeight - 100 };
+			const defaultRmb = { x: window.innerWidth - 80, y: window.innerHeight - 100 };
+			if (lmb) {
+				lmb.style.left = `${defaultLmb.x}px`;
+				lmb.style.top = `${defaultLmb.y}px`;
+			}
+			if (rmb) {
+				rmb.style.left = `${defaultRmb.x}px`;
+				rmb.style.top = `${defaultRmb.y}px`;
+			}
+			config.lmbPos = defaultLmb;
+			config.rmbPos = defaultRmb;
 			saveConfig();
 		});
 	}
@@ -692,66 +584,7 @@
 	}
 
 	// -------------------------------------------------------------
-	// 6. Blockbench Native Preferences Integration
-	// -------------------------------------------------------------
-	function registerBlockbenchSettings() {
-		if (typeof Setting === 'undefined') return;
-
-		try {
-			new Setting('mobile_fps_limit', {
-				name: 'Mobile Target FPS',
-				category: 'performance',
-				type: 'select',
-				value: String(config.fpsLimit),
-				options: {
-					'30': '30 FPS (Battery Saver)',
-					'60': '60 FPS (Balanced)',
-					'90': '90 FPS (Smooth)',
-					'120': '120 FPS (Ultra)',
-					'uncapped': 'Uncapped'
-				},
-				onChange: (v) => {
-					config.fpsLimit = v === 'uncapped' ? 'uncapped' : Number(v);
-					saveConfig();
-				}
-			});
-
-			new Setting('mobile_haptics', {
-				name: 'Haptic Feedback',
-				category: 'mobile_controls',
-				type: 'toggle',
-				value: config.haptics,
-				onChange: (v) => {
-					config.haptics = v;
-					saveConfig();
-				}
-			});
-
-			new Setting('mobile_cursor_template', {
-				name: 'Cursor Style',
-				category: 'mobile_controls',
-				type: 'select',
-				value: config.cursorTemplate,
-				options: {
-					'classic_white': 'Classic White',
-					'modern_black': 'Modern Black',
-					'macos_black': 'macOS Black',
-					'color_tint': 'Custom Color',
-					'custom': 'Custom URL'
-				},
-				onChange: (v) => {
-					config.cursorTemplate = v;
-					updateVirtualCursorElement();
-					saveConfig();
-				}
-			});
-		} catch (e) {
-			console.warn('Native settings hook note:', e);
-		}
-	}
-
-	// -------------------------------------------------------------
-	// 7. Auto-Save Backup Daemon
+	// 6. Auto-Save Backup Daemon
 	// -------------------------------------------------------------
 	function startAutoSaveDaemon() {
 		setInterval(() => {
@@ -768,13 +601,11 @@
 	// Initialize when DOM is ready
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', () => {
-			initMobileUI();
-			setTimeout(registerBlockbenchSettings, 2000);
+			initMobileControls();
 			startAutoSaveDaemon();
 		});
 	} else {
-		initMobileUI();
-		setTimeout(registerBlockbenchSettings, 2000);
+		initMobileControls();
 		startAutoSaveDaemon();
 	}
 
