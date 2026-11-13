@@ -798,6 +798,11 @@
 			</div>
 
 			<div class="mb-setting-row">
+				<span class="mb-setting-label">Immersive Fullscreen:</span>
+				<button class="mb-preset-btn" id="mb-btn-modal-fullscreen" style="padding: 4px 12px;">Toggle Fullscreen</button>
+			</div>
+
+			<div class="mb-setting-row">
 				<span class="mb-setting-label">Haptic Vibration:</span>
 				<input type="checkbox" id="mb-set-haptics">
 			</div>
@@ -812,6 +817,10 @@
 
 		document.getElementById('mb-close-modal').addEventListener('click', () => {
 			modal.style.display = 'none';
+		});
+
+		document.getElementById('mb-btn-modal-fullscreen').addEventListener('click', () => {
+			toggleFullscreen();
 		});
 
 		document.getElementById('mb-btn-edit-layout').addEventListener('click', () => {
@@ -903,22 +912,24 @@
 		fpsCounter.addEventListener('click', () => toggleFpsDisplay());
 		document.body.appendChild(fpsCounter);
 
-		// Header Buttons Integration
-		const nativeFpsBtn = document.getElementById('btn_native_toggle_fps');
-		if (nativeFpsBtn) {
-			nativeFpsBtn.classList.toggle('active', config.showFps);
-			nativeFpsBtn.addEventListener('click', () => toggleFpsDisplay());
-		}
-
-		const nativeFsBtn = document.getElementById('btn_native_fullscreen');
-		if (nativeFsBtn) {
-			nativeFsBtn.addEventListener('click', toggleFullscreen);
-		}
-
+		// Header Mobile Settings Button Integration
 		const nativeSetBtn = document.getElementById('btn_native_mobile_settings');
 		if (nativeSetBtn) {
 			nativeSetBtn.addEventListener('click', openSettingsModal);
 		}
+
+		// Ensure native_header_mobile_tools is docked cleanly at the end of header
+		// so it never blocks or displaces Blockbench native buttons (menu, search, undo, redo, mode switcher)
+		function dockMobileSettingsToHeaderEnd() {
+			const header = document.querySelector('header');
+			const mobileTools = document.getElementById('native_header_mobile_tools');
+			if (header && mobileTools && header.lastElementChild !== mobileTools) {
+				header.appendChild(mobileTools);
+			}
+		}
+		dockMobileSettingsToHeaderEnd();
+		setTimeout(dockMobileSettingsToHeaderEnd, 300);
+		setTimeout(dockMobileSettingsToHeaderEnd, 1000);
 
 		// Floating Controller Buttons
 		renderAllFloatingButtons();
