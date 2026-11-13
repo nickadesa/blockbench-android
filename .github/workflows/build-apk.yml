@@ -36,35 +36,50 @@ jobs:
       - name: Prepare APK Deliverable
         run: |
           mkdir -p build-output
+          cp app/build/outputs/apk/release/app-release.apk build-output/blockbenchmod.apk
           cp app/build/outputs/apk/release/app-release.apk build-output/blockbench-android.apk
           ls -la build-output/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: blockbench-android-apk
-          path: build-output/blockbench-android.apk
+          name: blockbenchmod-apk
+          path: build-output/blockbenchmod.apk
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: ${{ github.ref_name || 'v1.0.0' }}
+          tag_name: ${{ github.ref_name || 'v1.2.2' }}
           name: Blockbench Mod Mobile ${{ github.ref_name || 'v1.2.2' }}
           draft: false
           prerelease: false
-          files: build-output/blockbench-android.apk
+          files: |
+            build-output/blockbenchmod.apk
+            build-output/blockbench-android.apk
           body: |
             Blockbench Mod Mobile (${{ github.ref_name || 'v1.2.2' }})
 
-            Key Updates in v1.2.2:
-            1. Complete AI Subsystem Removal:
-               - Removed AI Assistant drawer, provider connectors, commands, tools, and background scripts completely as requested.
-            2. Clean Header UI with Zero Button Interference:
-               - Top-right header streamlined to a single compact Mobile Settings gear button.
-               - Header docking ensures Blockbench native buttons (Mode Switcher, Menu, Search, Undo, Redo) are never blocked or displaced.
-            3. Consolidated Mobile Settings:
-               - Immersive Fullscreen, Realtime FPS Display, Target Refresh Rate (60/90/120/Uncapped), Button Layout Editor, Layout Presets, Haptic Feedback, and UI Scaling accessible from a single clean modal.
-            4. Touch Controller & Solid Green Modifier Keys:
-               - Floating controller buttons locked in place during modeling.
+            Key Features & Capabilities:
+            1. 100% Standalone Offline 3D Modeling:
+               - Complete low-poly 3D modeling editor, Three.js engine, shaders, and textures bundled on-device.
+               - Zero internet connection required.
+            2. Synchronized 120Hz Hardware Display Engine:
+               - Android WindowManager display mode synchronization for smooth 3D viewport navigation.
+               - Configurable frame rate targets (60, 90, 120 FPS, Uncapped) and on-screen FPS monitor.
+            3. Floating Touch Controller & Working Modifier Keys:
+               - Fixed-position floating buttons (LMB, RMB, MMB / 3D Pan, Space, Undo, Redo, Del).
                - Solid bright green (#2ecc71) indicators with [ON] badges for CTRL, SHIFT, and ALT modifiers.
+               - Deep event capture integration for outliner multi-selection, uniform scaling, and precision snapping.
+            4. Layout Customization:
+               - Edit Button Layout mode allows dragging buttons anywhere on screen with permanent local persistence.
+               - Built-in ergonomic presets (Split Hands, Dock Right, Dock Left, Reset Defaults).
+            5. Clean Header & Consolidated Settings:
+               - Single compact 32px gear button docked at the top right, guaranteeing zero overlap with native Blockbench buttons.
+               - In-modal controls for Immersive Fullscreen, FPS overlay, haptics, and UI scaling (75% to 130%).
+
+            License & Legal Notice:
+            - Mod extensions and native wrapper licensed under the MIT License.
+            - Upstream Blockbench components remain under GPL-3.0.
+            - Independent open-source project by DAVINICK. Not affiliated with, endorsed by, or sponsored by Jannis Brinkmann, Blockbench, Mojang AB, or Microsoft Corporation.
+            - Software provided AS IS without warranty of any kind.
